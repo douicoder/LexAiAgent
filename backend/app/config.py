@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+import os
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 
 class Settings(BaseSettings):
     GITHUB_TOKEN: str | None = None
@@ -11,8 +13,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000"
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    LLM_MODEL: str = "gpt-4o"
+    
+    model_config = SettingsConfigDict(env_file=env_path, extra="ignore")
 
 settings = Settings()

@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import HTTPException, status
 from llama_index.core import Settings, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.llms.openai import OpenAI
 from llama_index.vector_stores.supabase import SupabaseVectorStore
 
 from app.config import settings
@@ -24,11 +25,19 @@ class RagService(IRagService):
             )
 
         self.embed_model = OpenAIEmbedding(
-            model="text-embedding-3-small",
+            model=settings.EMBEDDING_MODEL,
             api_key=settings.GITHUB_TOKEN,
-            api_base="https://models.inference.ai.azure.com",
+            api_base="https://models.github.ai/inference",
+            dimensions=1536,
         )
         Settings.embed_model = self.embed_model
+
+        self.llm = OpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.GITHUB_TOKEN,
+            api_base="https://models.github.ai/inference",
+        )
+        Settings.llm = self.llm
 
         self.vector_store = SupabaseVectorStore(
             postgres_connection_string=settings.DATABASE_URL,

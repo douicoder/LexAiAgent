@@ -1572,7 +1572,7 @@ if __name__ == "__main__":
 **End goal:** User can register, log in, get JWT, hit /me
 
 ### Day 2 — RAG Pipeline
-- [ ] Download law PDFs (BNS, CrPC, Consumer Protection Act, RTI Act)
+- [x] Download law PDFs (BNS, CrPC, Consumer Protection Act, RTI Act)
 - [ ] Set up LlamaIndex with Supabase pgvector
 - [ ] Run `ingest_laws.py` — embed all 4 documents
 - [ ] Test `/documents/search?q=landlord deposit` returns real law sections
