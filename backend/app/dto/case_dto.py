@@ -5,11 +5,10 @@ from pydantic import BaseModel
 
 
 class CaseTypeEnum(str, Enum):
-    CIVIL = "civil"
-    CRIMINAL = "criminal"
-    CONSUMER = "consumer"
-    RTI = "rti"
-    LABOUR = "labour"
+    TENANCY_DISPUTE       = "tenancy_dispute"
+    PROPERTY_OWNERSHIP    = "property_ownership"
+    PROPERTY_REGISTRATION = "property_registration"
+    OTHER                 = "other"
 
 
 class SeverityEnum(str, Enum):
