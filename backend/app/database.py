@@ -21,11 +21,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def create_tables() -> None:
     from app import models  # noqa: F401
-    from app.models.user import User
 
     async with engine.begin() as conn:
         if settings.DATABASE_URL.startswith("sqlite"):
+            from app.models.case import Case
+            from app.models.user import User
             await conn.run_sync(User.__table__.create, checkfirst=True)
+            await conn.run_sync(Case.__table__.create, checkfirst=True)
             return
 
         await conn.run_sync(Base.metadata.create_all)

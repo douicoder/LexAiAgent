@@ -1573,8 +1573,8 @@ if __name__ == "__main__":
 
 ### Day 2 — RAG Pipeline
 - [x] Download law PDFs (BNS, CrPC, Consumer Protection Act, RTI Act)
-- [ ] Set up LlamaIndex with Supabase pgvector
-- [ ] Run `ingest_laws.py` — embed all 4 documents
+- [x] Set up LlamaIndex with Supabase pgvector
+- [x] Run `ingest_laws.py` — embed all 4 documents
 - [ ] Test `/documents/search?q=landlord deposit` returns real law sections
 - [ ] Verify relevance scores are meaningful
 
