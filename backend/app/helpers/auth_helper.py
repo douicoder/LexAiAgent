@@ -104,20 +104,21 @@ class AuthHelper:
     @staticmethod
     def supabase_auth_response(payload: dict) -> dict:
         user = payload.get("user") or payload
-        session = payload.get("session") or payload
         metadata = user.get("user_metadata") or {}
-        access_token = session.get("access_token")
+        user_id = user.get("id")
 
-        if not access_token:
+        if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User registered, but Supabase did not return a session. Email confirmation may be enabled.",
+                detail="Supabase did not return a user ID.",
             )
+
+        local_token = AuthHelper.create_jwt(user_id)
 
         return {
             "email": user.get("email"),
             "full_name": metadata.get("full_name") or "",
-            "access_token": access_token,
+            "access_token": local_token,
             "token_type": "bearer",
         }
 
@@ -141,10 +142,10 @@ class AuthHelper:
     async def get_current_user_id(
         credentials: HTTPAuthorizationCredentials = Depends(security),
     ) -> str:
-        user = await AuthHelper.get_current_supabase_user(credentials)
-        user_id = user.get("id")
+        payload = AuthHelper.decode_jwt(credentials.credentials)
+        user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user token")
+            raise HTTPException(status_code=401, detail="Invalid token")
         return user_id
 
     @staticmethod

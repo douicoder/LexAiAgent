@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str | None = None
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None
+    SUPABASE_SERVICE_KEY: str
     DATABASE_URL: str = "sqlite+aiosqlite:///./lexagent.db"
     JWT_SECRET: str = "change-this-secret"
     JWT_ALGORITHM: str = "HS256"
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     LLM_MODEL: str = "gpt-4o"
+    SUPABASE_STORAGE_BUCKET: str = "legal-notices"
     
     model_config = SettingsConfigDict(env_file=env_path, extra="ignore")
 

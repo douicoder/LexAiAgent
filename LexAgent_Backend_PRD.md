@@ -1575,16 +1575,16 @@ if __name__ == "__main__":
 - [x] Download law PDFs (BNS, CrPC, Consumer Protection Act, RTI Act)
 - [x] Set up LlamaIndex with Supabase pgvector
 - [x] Run `ingest_laws.py` — embed all 4 documents
-- [ ] Test `/documents/search?q=landlord deposit` returns real law sections
-- [ ] Verify relevance scores are meaningful
+- [x] Test `/documents/search?q=landlord deposit` returns real law sections
+- [x] Verify relevance scores are meaningful
 
 **End goal:** Semantic search returns accurate law citations
 
 ### Day 3 — Agent Brain
-- [ ] Implement `AgentService` with tool calling loop
-- [ ] Wire `search_law` tool to `RagService`
-- [ ] Implement `classify_case` tool
-- [ ] Test full analyze pipeline: description → classification + sections + draft
+- [x] Implement `AgentService` with tool calling loop
+- [x] Wire `search_law` tool to `RagService`
+- [x] Implement `classify_case` tool
+- [x] Test full analyze pipeline: description → classification + sections + draft
 - [ ] Implement `CaseService` — create case + trigger agent + save results
 
 **End goal:** POST /cases returns fully analyzed case with law sections

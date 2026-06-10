@@ -3,12 +3,14 @@ from enum import Enum
 
 from pydantic import BaseModel
 
+from app.dto.agent_dto import ActionButton, ClarifyingQuestion, NextStep
+
 
 class CaseTypeEnum(str, Enum):
-    TENANCY_DISPUTE       = "tenancy_dispute"
-    PROPERTY_OWNERSHIP    = "property_ownership"
+    TENANCY_DISPUTE = "tenancy_dispute"
+    PROPERTY_OWNERSHIP = "property_ownership"
     PROPERTY_REGISTRATION = "property_registration"
-    OTHER                 = "other"
+    OTHER = "other"
 
 
 class SeverityEnum(str, Enum):
@@ -45,9 +47,12 @@ class CaseResponseDTO(BaseModel):
     severity: SeverityEnum | None = None
     relevant_sections: list[LegalSectionDTO] = []
     summary: str | None = None
-    next_steps: list[str] = []
+    next_steps: list[NextStep] = []
     pdf_ready: bool = False
     created_at: datetime | None = None
+    ai_message: str | None = None
+    clarifying_questions: list[ClarifyingQuestion] = []
+    action_buttons: list[ActionButton] = []
 
 
 class CaseDetailDTO(CaseResponseDTO):

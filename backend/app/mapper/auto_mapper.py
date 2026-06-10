@@ -34,6 +34,9 @@ class AutoMapper:
             next_steps=case.next_steps or [],
             pdf_ready=bool(case.pdf_url),
             created_at=case.created_at,
+            ai_message=case.ai_message,
+            clarifying_questions=case.clarifying_questions or [],
+            action_buttons=case.action_buttons or [],
         )
 
     @staticmethod
@@ -48,6 +51,5 @@ class AutoMapper:
         )
 
     @staticmethod
-    def case_list_to_dto(cases: list[Case]) -> CaseListResponseDTO:
-        mapped_cases = [AutoMapper.case_to_response_dto(case) for case in cases]
-        return CaseListResponseDTO(cases=mapped_cases, total=len(mapped_cases))
+    def case_list_to_dto(cases: list[Case]) -> list[CaseResponseDTO]:
+        return [AutoMapper.case_to_response_dto(case) for case in cases]

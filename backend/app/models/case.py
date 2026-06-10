@@ -30,6 +30,9 @@ class Case(Base):
     legal_notice_draft: Mapped[str | None] = mapped_column(Text)
     pdf_url: Mapped[str | None] = mapped_column(String)
     pdf_id: Mapped[str | None] = mapped_column(String)
+    clarifying_questions: Mapped[list] = mapped_column(JSON, default=list)
+    action_buttons: Mapped[list] = mapped_column(JSON, default=list)
+    ai_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime,
         default=datetime.datetime.utcnow,

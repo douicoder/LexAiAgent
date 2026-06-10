@@ -1,6 +1,24 @@
 from pydantic import BaseModel
 
 
+class ClarifyingQuestion(BaseModel):
+    question: str
+    key: str
+
+
+class ActionButton(BaseModel):
+    label: str
+    message: str
+    style: str = "default"
+
+
+class NextStep(BaseModel):
+    number: int
+    text: str
+    action_label: str = ""
+    action_message: str = ""
+
+
 class PersonDetailsDTO(BaseModel):
     name: str
     address: str
@@ -23,8 +41,11 @@ class AnalyzeResponseDTO(BaseModel):
     relevant_sections: list
     legal_notice_draft: str
     summary: str
-    next_steps: list[str]
+    next_steps: list[NextStep] = []
     reasoning_trace: str
+    clarifying_questions: list[ClarifyingQuestion] = []
+    action_buttons: list[ActionButton] = []
+    ai_message: str = ""
 
 
 class ChatMessageDTO(BaseModel):
@@ -36,12 +57,15 @@ class ChatRequestDTO(BaseModel):
     case_id: str
     message: str
     history: list[ChatMessageDTO] = []
+    current_notice_draft: str = ""
 
 
 class ChatResponseDTO(BaseModel):
     reply: str
-    suggested_actions: list[str] = []
+    suggested_actions: list[ActionButton] = []
     updated_sections: list = []
+    updated_notice: str = ""
+    clarifying_questions: list[ClarifyingQuestion] = []
 
 
 class GeneratePdfDTO(BaseModel):

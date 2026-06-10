@@ -1,28 +1,29 @@
 import json
-import re
 
 from openai import AsyncOpenAI
 
 from app.config import settings
-from app.dto.agent_dto import AnalyzeRequestDTO, AnalyzeResponseDTO, ChatRequestDTO, ChatResponseDTO
+from app.dto.agent_dto import (
+    ActionButton,
+    AnalyzeRequestDTO,
+    AnalyzeResponseDTO,
+    ChatRequestDTO,
+    ChatResponseDTO,
+    ClarifyingQuestion,
+    NextStep,
+)
 from app.helpers.legal_helper import LegalHelper
 from app.helpers.text_helper import TextHelper
 from app.interfaces.i_agent_service import IAgentService
 from app.interfaces.i_rag_service import IRagService
 
 LLM_MODEL = settings.LLM_MODEL
-FAST_MODEL = "gpt-4o"  # used for structured JSON extraction (classify, search query)
+FAST_MODEL = "gpt-4o"
 
 
 def _extract_json(text: str) -> dict:
-    """Extract JSON object from model output (handles reasoning models that embed JSON in chain-of-thought).
-    
-    Iterates from right to left finding the LAST complete JSON object.
-    This ensures reasoning/chain-of-thought fragments before the final answer are ignored.
-    """
     text = text.strip()
 
-    # Scan from right to left, find the last pair of balanced braces
     for end in range(len(text) - 1, -1, -1):
         if text[end] != "}":
             continue
@@ -141,11 +142,31 @@ class AgentService(IAgentService):
             f"Opponent: {request.opponent_name} ({request.opponent_address})\n\n"
             f"Case classification: {json.dumps(classification, indent=2)}\n\n"
             f"Relevant law sections found:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
-            f"Generate final legal advice as JSON. "
+            f"Generate final legal advice as JSON.\n"
+            f"Return ONLY valid JSON with these exact keys. "
+            f"No markdown backticks. No extra text.\n"
+            f"ai_message should be warm, empathetic, conversational — not robotic.\n"
+            f"clarifying_questions should be exactly 2-3 questions that would "
+            f"make the legal notice stronger or more accurate.\n"
+            f"action_buttons should match the clarifying questions as quick replies.\n"
+            f"next_steps action_label should be 'How? ↗' if the step needs explanation, "
+            f"'Draft ↗' if it involves creating a new document, or empty string if simple.\n"
+            f"\n"
             f"Put your JSON answer after a line that says exactly 'FINAL_JSON:' and nothing else.\n"
-            '{"summary": "2-3 sentence plain language summary", '
-            '"next_steps": ["3-5 actionable steps"], '
-            '"legal_notice_draft": "Full formal legal notice text citing the sections found"}'
+            f'{{{{'
+            f'"ai_message": "conversational message explaining what was found and what info would help", '
+            f'"summary": "2-3 sentence summary", '
+            f'"legal_notice_draft": "full notice text", '
+            f'"next_steps": ['
+            f'{{"number": 1, "text": "what to do", "action_label": "How? ↗", "action_message": "How do I send this notice?"}}'
+            f'], '
+            f'"clarifying_questions": ['
+            f'{{"question": "Do you have photos?", "key": "has_photos"}}'
+            f'], '
+            f'"action_buttons": ['
+            f'{{"label": "Yes, I have these", "message": "I have photos", "style": "primary"}}'
+            f']'
+            f'}}}}'
         )
 
         response = await self.client.chat.completions.create(
@@ -158,7 +179,6 @@ class AgentService(IAgentService):
         )
         final_text = response.choices[0].message.content.strip()
 
-        # Extract JSON after FINAL_JSON: marker (fall back to right-to-left brace search)
         marker = "FINAL_JSON:"
         idx = final_text.rfind(marker)
         if idx >= 0:
@@ -170,15 +190,38 @@ class AgentService(IAgentService):
             case_type=classification.get("case_type", "other"),
             severity=classification.get("severity", "medium"),
             relevant_sections=law_sections,
-            legal_notice_draft=final_data["legal_notice_draft"],
-            summary=final_data["summary"],
-            next_steps=final_data["next_steps"],
+            legal_notice_draft=final_data.get("legal_notice_draft", ""),
+            summary=final_data.get("summary", ""),
+            next_steps=[NextStep(**ns) for ns in final_data.get("next_steps", [])],
             reasoning_trace="\n".join(reasoning_trace),
+            clarifying_questions=[ClarifyingQuestion(**cq) for cq in final_data.get("clarifying_questions", [])],
+            action_buttons=[ActionButton(**ab) for ab in final_data.get("action_buttons", [])],
+            ai_message=final_data.get("ai_message", ""),
         )
 
     async def chat(self, request: ChatRequestDTO) -> ChatResponseDTO:
+        system_content = self.legal.system_prompt()
+
+        if request.current_notice_draft:
+            system_content += (
+                f"\n\nCurrent legal notice draft:\n{request.current_notice_draft}\n\n"
+                f"If the user asks to edit the notice, return the updated full notice text in 'updated_notice'. "
+                f"If they are answering clarifying questions, incorporate the new info into the notice and return it in 'updated_notice'. "
+                f"Otherwise 'updated_notice' should be empty."
+            )
+
+        system_content += (
+            "\n\nRespond with JSON containing these keys:\n"
+            '{"reply": "your conversational reply", '
+            '"updated_notice": "full updated notice text or empty string", '
+            '"updated_sections": [], '
+            '"clarifying_questions": [{"question": "...", "key": "..."}], '
+            '"action_buttons": [{"label": "...", "message": "...", "style": "default"}]}'
+            "\nNo markdown backticks. No extra text."
+        )
+
         messages = [
-            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "system", "content": system_content},
         ]
         for h in request.history:
             messages.append({"role": h.role, "content": h.content})
@@ -187,7 +230,19 @@ class AgentService(IAgentService):
         response = await self.client.chat.completions.create(
             model=LLM_MODEL,
             messages=messages,
-            max_tokens=2000,
+            max_tokens=4000,
         )
         reply_text = response.choices[0].message.content or ""
-        return ChatResponseDTO(reply=reply_text)
+
+        try:
+            data = _extract_json(reply_text)
+        except ValueError:
+            data = {}
+
+        return ChatResponseDTO(
+            reply=data.get("reply", reply_text),
+            updated_notice=data.get("updated_notice", ""),
+            updated_sections=data.get("updated_sections", []),
+            clarifying_questions=[ClarifyingQuestion(**cq) for cq in data.get("clarifying_questions", [])],
+            suggested_actions=[ActionButton(**ab) for ab in data.get("action_buttons", [])],
+        )
