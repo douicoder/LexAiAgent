@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from app.dto.document_dto import SearchResponseDTO
+from app.dto.document_dto import LawSearchResultDTO, SearchResponseDTO
 from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -27,7 +27,11 @@ async def search_documents(
         use_rerank=rerank,
         vector_weight=vector_weight,
     )
-    return SearchResponseDTO(results=results, query=q, total=len(results))
+    return SearchResponseDTO(
+        results=[LawSearchResultDTO(**r) for r in results],
+        query=q,
+        total=len(results),
+    )
 
 @router.get("/health")
 async def health_check():

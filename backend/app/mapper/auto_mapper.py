@@ -1,5 +1,5 @@
 from app.dto.auth_dto import AuthResponseDTO, UserProfileDTO
-from app.dto.case_dto import CaseDetailDTO, CaseListResponseDTO, CaseResponseDTO
+from app.dto.case_dto import CaseDetailDTO, CaseResponseDTO
 from app.models.case import Case
 from app.models.user import User
 

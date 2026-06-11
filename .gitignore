@@ -44,6 +44,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Test and debug artifacts
+backend/test_*
+backend/debug_*
+backend/token.txt
+nul
+
 # Law document inputs
 backend/law_docs/*
 !backend/law_docs/.gitkeep

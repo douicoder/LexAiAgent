@@ -1,7 +1,5 @@
-import ast
 import logging
 
-import numpy as np
 from fastapi import HTTPException, status
 from openai import OpenAI
 from supabase import create_client
@@ -10,12 +8,6 @@ from app.config import settings
 from app.interfaces.i_rag_service import IRagService
 
 logger = logging.getLogger(__name__)
-
-
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    a_np = np.array(a, dtype=np.float32)
-    b_np = np.array(b, dtype=np.float32)
-    return float(np.dot(a_np, b_np) / (np.linalg.norm(a_np) * np.linalg.norm(b_np) + 1e-8))
 
 
 def _squash_bm25(score: float) -> float:
@@ -43,8 +35,6 @@ class RagService(IRagService):
         self.embedding_model = settings.EMBEDDING_MODEL
 
         # Lazy-loaded resources
-        self._bm25 = None
-        self._corpus_texts: list[str] | None = None
         self._reranker = None
 
     # ── Embedding ──────────────────────────────────────────────────────────
@@ -55,30 +45,6 @@ class RagService(IRagService):
             dimensions=1536,
         )
         return response.data[0].embedding
-
-    # ── BM25 lazy init ─────────────────────────────────────────────────────
-    def _ensure_bm25(self):
-        if self._bm25 is not None:
-            return
-        try:
-            from rank_bm25 import BM25Okapi
-        except ImportError:
-            logger.warning("rank_bm25 not installed; hybrid search disabled.")
-            self._bm25 = False
-            return
-
-        data = self.supabase.table("law_chunks").select("chunk_text").execute().data
-        self._corpus_texts = [row["chunk_text"] for row in data]
-        tokenized_corpus = [t.split() for t in self._corpus_texts]
-        self._bm25 = BM25Okapi(tokenized_corpus)
-        logger.info("BM25 index built with %d documents", len(self._corpus_texts))
-
-    def _bm25_scores(self, query: str) -> list[float] | None:
-        if not self._bm25:
-            return None
-        tokenized_query = query.split()
-        raw = self._bm25.get_scores(tokenized_query)
-        return [_squash_bm25(s) for s in raw]
 
     # ── Reranker lazy init ─────────────────────────────────────────────────
     def _ensure_reranker(self):
@@ -121,36 +87,39 @@ class RagService(IRagService):
         # 1. Embed query
         query_vec = await self._embed_text(query)
 
-        # 2. Fetch candidates from Supabase
-        supabase_query = self.supabase.table("law_chunks").select(
-            "id, act_name, chunk_text, embedding, metadata"
-        )
-        if acts:
-            act_filter = ",".join([f"act_name.eq.{a}" for a in acts])
-            supabase_query = supabase_query.or_(act_filter)
-        data = supabase_query.execute().data
+        # 2. Fetch candidates via Supabase pgvector RPC
+        data = self.supabase.rpc(
+            "match_law_chunks",
+            {
+                "query_embedding": query_vec,
+                "match_count": top_k * 2,
+            }
+        ).execute().data
         if not data:
             return []
+        if acts:
+            data = [row for row in data if row["act_name"] in acts]
+            if not data:
+                return []
 
-        # 3. Compute vector scores
+        # 3. Map RPC similarity as vector score
         for row in data:
-            emb = row["embedding"]
-            if isinstance(emb, str):
-                try:
-                    emb = ast.literal_eval(emb)
-                except Exception:
-                    emb = [float(x) for x in emb.strip("[]").split(",") if x]
-            row["_vec_score"] = _cosine_similarity(query_vec, emb)
+            row["_vec_score"] = row["similarity"]
 
-        # 4. BM25 scores if hybrid
+        # 4. BM25 scores if hybrid (on RPC results only)
         bm25_scores = None
         if use_hybrid:
-            self._ensure_bm25()
-            if self._bm25:
-                try:
-                    bm25_scores = self._bm25_scores(query)
-                except Exception:
-                    bm25_scores = None
+            try:
+                from rank_bm25 import BM25Okapi
+                tokenized_query = query.split()
+                rpc_texts = [row["chunk_text"] for row in data]
+                tokenized_rpc = [t.split() for t in rpc_texts]
+                temp_bm25 = BM25Okapi(tokenized_rpc)
+                raw = temp_bm25.get_scores(tokenized_query)
+                bm25_scores = [_squash_bm25(s) for s in raw]
+            except Exception as e:
+                logger.warning("BM25 scoring on RPC results failed: %s", e)
+                bm25_scores = None
 
         # 5. Build results
         scored = []
