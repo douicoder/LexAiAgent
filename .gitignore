@@ -26,6 +26,7 @@ ENV/
 *.sqlite3
 
 # Logs and runtime files
+logs/
 *.log
 *.pid
 .coverage
