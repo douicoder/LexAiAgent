@@ -62,6 +62,13 @@ class CaseDetailDTO(CaseResponseDTO):
     pdf_url: str | None = None
 
 
+class MessageDTO(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: str
+
+
 class CaseListResponseDTO(BaseModel):
     cases: list[CaseResponseDTO]
     total: int

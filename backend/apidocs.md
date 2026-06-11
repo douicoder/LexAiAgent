@@ -273,7 +273,7 @@ curl -X POST http://localhost:8000/api/v1/agent/analyze \
 
 ### POST /agent/chat
 
-Conversational follow-up with an existing case. Supports answering clarifying questions, editing the notice draft, and requesting changes.
+Conversational follow-up with an existing case. History is loaded server-side from Supabase (ownership-verified via `case_id` + `user_id`). The current `legal_notice_draft` is loaded from the case record. Supports answering clarifying questions, editing the notice draft, and requesting changes. User and assistant messages are persisted to Supabase automatically.
 
 **Auth**: Bearer token required
 

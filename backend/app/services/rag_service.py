@@ -1,13 +1,22 @@
+import ast
 import logging
 
+import numpy as np
 from fastapi import HTTPException, status
 from openai import OpenAI
+from postgrest.exceptions import APIError
 from supabase import create_client
 
 from app.config import settings
 from app.interfaces.i_rag_service import IRagService
 
 logger = logging.getLogger(__name__)
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    a_np = np.array(a, dtype=np.float32)
+    b_np = np.array(b, dtype=np.float32)
+    return float(np.dot(a_np, b_np) / (np.linalg.norm(a_np) * np.linalg.norm(b_np) + 1e-8))
 
 
 def _squash_bm25(score: float) -> float:
@@ -73,6 +82,34 @@ class RagService(IRagService):
             logger.warning("Reranking failed: %s", e)
         return candidates
 
+    # ── Fallback: client-side vec search when pgvector RPC is missing ──────
+    async def _fallback_search(
+        self, query_vec: list[float], top_k: int, acts: list[str] | None
+    ) -> list[dict]:
+        supabase_query = self.supabase.table("law_chunks").select(
+            "id, act_name, chunk_text, embedding, metadata"
+        )
+        if acts:
+            act_filter = ",".join([f"act_name.eq.{a}" for a in acts])
+            supabase_query = supabase_query.or_(act_filter)
+        data = supabase_query.execute().data
+        if not data:
+            return []
+
+        for row in data:
+            emb = row["embedding"]
+            if isinstance(emb, str):
+                try:
+                    emb = ast.literal_eval(emb)
+                except Exception:
+                    emb = [float(x) for x in emb.strip("[]").split(",") if x]
+            row["_vec_score"] = _cosine_similarity(query_vec, emb)
+
+        data.sort(key=lambda r: r["_vec_score"], reverse=True)
+        for row in data:
+            row.pop("embedding", None)
+        return data[:top_k * 2]
+
     # ── Search ─────────────────────────────────────────────────────────────
     async def search(
         self,
@@ -87,24 +124,31 @@ class RagService(IRagService):
         # 1. Embed query
         query_vec = await self._embed_text(query)
 
-        # 2. Fetch candidates via Supabase pgvector RPC
-        data = self.supabase.rpc(
-            "match_law_chunks",
-            {
-                "query_embedding": query_vec,
-                "match_count": top_k * 2,
-            }
-        ).execute().data
+        # 2. Fetch candidates via Supabase pgvector RPC (fallback to client-side if RPC missing)
+        try:
+            data = self.supabase.rpc(
+                "match_law_chunks",
+                {
+                    "query_embedding": query_vec,
+                    "match_count": top_k * 2,
+                }
+            ).execute().data
+        except APIError as e:
+            if "Could not find the function" in str(e):
+                logger.warning("match_law_chunks RPC not found — using client-side fallback")
+                data = await self._fallback_search(query_vec, top_k, acts)
+            else:
+                raise
+        else:
+            if acts:
+                data = [row for row in data if row["act_name"] in acts]
         if not data:
             return []
-        if acts:
-            data = [row for row in data if row["act_name"] in acts]
-            if not data:
-                return []
 
-        # 3. Map RPC similarity as vector score
+        # 3. Map RPC similarity as vector score (skip if fallback already set _vec_score)
         for row in data:
-            row["_vec_score"] = row["similarity"]
+            if "similarity" in row:
+                row["_vec_score"] = row["similarity"]
 
         # 4. BM25 scores if hybrid (on RPC results only)
         bm25_scores = None

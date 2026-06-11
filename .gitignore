@@ -49,6 +49,7 @@ Thumbs.db
 backend/test_*
 backend/debug_*
 backend/token.txt
+*.tmp
 nul
 
 # Law document inputs

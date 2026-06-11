@@ -4,7 +4,7 @@
 
 LexAgent is a legal AI assistant specializing in Indian property and tenancy law. The backend is a **FastAPI** application that orchestrates a multi-agent LLM pipeline, a hybrid RAG search over Indian law texts, and a local auth system — all exposed via REST endpoints.
 
-**Stack**: FastAPI + SQLAlchemy (async) + SQLite/PostgreSQL + OpenAI SDK (via GitHub Models) + Supabase (vector storage + auth proxy).
+**Stack**: FastAPI + Supabase REST API (supabase-py) + OpenAI SDK (via GitHub Models) + Supabase Auth + Supabase Storage.
 
 ---
 
@@ -15,29 +15,32 @@ backend/
 ├── app/
 │   ├── main.py                 # FastAPI app, routers, CORS, startup
 │   ├── config.py               # Settings from .env (pydantic-settings)
-│   ├── database.py             # SQLAlchemy async engine, session, table creation
+│   ├── database.py             # SQLAlchemy async engine (kept for startup only)
 │   ├── api/                    # Route handlers
-│   │   ├── auth.py             #  POST /register, /login, GET /me
-│   │   ├── cases.py            #  CRUD /cases, POST /{id}/pdf
-│   │   ├── agent.py            #  POST /agent/analyze, /agent/chat
+│   │   ├── auth.py             #  POST /register, /login, GET /me (Supabase Auth + users table)
+│   │   ├── cases.py            #  CRUD /cases, POST /{id}/pdf (Supabase REST)
+│   │   ├── agent.py            #  POST /agent/analyze, /agent/chat (Supabase persistence)
 │   │   ├── documents.py        #  GET /documents/search
 │   │   └── voice.py            #  POST /voice/transcribe (WAV → whisper → text)
-│   ├── models/                 # SQLAlchemy ORM models
+│   ├── models/                 # SQLAlchemy ORM models (reference only — unused by routes)
 │   │   ├── user.py             #  users table
-│   │   ├── case.py             #  cases table (all analysis results)
-│   │   └── document.py         #  law_chunks table (ingested law texts + embeddings)
+│   │   ├── case.py             #  cases table
+│   │   ├── case_message.py     #  case_messages table
+│   │   └── document.py         #  law_chunks table
 │   ├── dto/                    # Pydantic request/response schemas
 │   │   ├── auth_dto.py
 │   │   ├── case_dto.py
 │   │   ├── agent_dto.py
 │   │   └── document_dto.py
 │   ├── services/               # Business logic
+│   │   ├── supabase_db.py      #  Supabase REST client (service_role key, all CRUD)
 │   │   ├── agent_service.py    #  Multi-round LLM pipeline
-│   │   ├── case_service.py     #  Case CRUD + orchestration
-│   │   ├── rag_service.py      #  Hybrid vector+BM25 search
+│   │   ├── case_service.py     #  Case CRUD + orchestration (via SupabaseService)
+│   │   ├── case_message_service.py # Case message persistence (via SupabaseService)
+│   │   ├── rag_service.py      #  Hybrid vector+BM25 search (client-side cosine sim)
 │   │   └── pdf_service.py      #  ReportLab PDF generation + Supabase Storage upload
 │   ├── helpers/                # Utility classes
-│   │   ├── auth_helper.py      #  JWT creation/validation, Supabase proxy
+│   │   ├── auth_helper.py      #  JWT creation/validation, Supabase Auth proxy
 │   │   ├── legal_helper.py     #  System prompts, notice templates, deadlines
 │   │   └── text_helper.py      #  Hindi detection, translation, text cleaning
 │   ├── interfaces/             # Abstract base classes (contracts)
@@ -46,10 +49,12 @@ backend/
 │   │   ├── i_rag_service.py
 │   │   └── i_pdf_service.py
 │   └── mapper/
-│       └── auto_mapper.py      #  Model → DTO converters
+│       └── auto_mapper.py      #  Dict → DTO converters (no SQLAlchemy ORM)
 ├── requirements.txt
 ├── .env.example
-└── Dockerfile
+├── supabase_script.txt         # Full Supabase SQL schema (4 tables, RLS, indexes)
+├── Dockerfile
+└── logs/                       # Server log files
 ```
 
 ---
@@ -197,14 +202,15 @@ No RAG search — chat works with the existing draft and conversation history.
 - **File path**: `notices/{case_id}/{filename}.pdf`
 - **After upload**: Updates case with `pdf_url`, `pdf_id`, sets `status = "notice_generated"`
 
-### 5.3 Dual Supabase Clients
+### 5.3 Supabase Clients
 
-`PdfService` initializes two clients:
+`SupabaseService` uses the `service_role` key for all operations (bypasses RLS). `PdfService` additionally initializes a second client with the anon key for reads:
 
 | Client | Key | Purpose |
 |---|---|---|
-| `self.supabase` | anon key (`SUPABASE_KEY`) | DB reads only |
-| `self.supabase_admin` | service_role key (`SUPABASE_SERVICE_KEY`) | Storage uploads only |
+| `SupabaseService` | service_role key (`SUPABASE_SERVICE_KEY`) | All CRUD (users, cases, messages) |
+| `PdfService.supabase` | anon key (`SUPABASE_KEY`) | DB reads only |
+| `PdfService.supabase_admin` | service_role key (`SUPABASE_SERVICE_KEY`) | Storage uploads only |
 
 ### 5.4 Endpoint
 
@@ -346,6 +352,7 @@ All under `/api/v1`.
 | POST | `/cases` | Yes | Create case (triggers agent pipeline, returns analyzed result) |
 | GET | `/cases` | Yes | List user's cases |
 | GET | `/cases/{id}` | Yes | Get case detail |
+| GET | `/cases/{id}/messages` | Yes | Get conversation messages |
 | DELETE | `/cases/{id}` | Yes | Delete case |
 | POST | `/cases/{id}/pdf` | Yes | Generate & upload PDF legal notice |
 
@@ -376,7 +383,9 @@ All under `/api/v1`.
 
 ---
 
-## 10. Data Models
+## 10. Data Storage
+
+All data is stored in Supabase across 4 tables defined in `supabase_script.txt`. API routes use `SupabaseService` (supabase-py REST client) for all CRUD operations — no SQLAlchemy.
 
 ### Case (`cases` table)
 
@@ -402,7 +411,7 @@ All under `/api/v1`.
 | `created_at` | DateTime | |
 | `updated_at` | DateTime? | |
 
-**Note**: All `JSON` columns store lists as JSON arrays. SQLAlchemy's `JSON` type is used instead of `JSONB` because the app uses SQLite in development (SQLite lacks JSONB support).
+**Note**: All `JSON` columns use Postgres `JSONB` in Supabase. The `supabase_script.txt` schema uses `JSONB` throughout.
 
 ### User (`users` table)
 
@@ -410,7 +419,7 @@ All under `/api/v1`.
 |---|---|---|
 | `id` | UUID PK | |
 | `email` | String unique | |
-| `hashed_password` | String | bcrypt hash via passlib |
+| `hashed_password` | String | SHA-256 hash (bcrypt unavailable on Windows) |
 | `full_name` | String | |
 | `preferred_language` | String | `"en"` or `"hi"` |
 
@@ -480,9 +489,15 @@ Supabase issues ES256 JWTs. The `python-jose` library only supports HS256/RS256 
 
 The current implementation fetches all rows and computes cosine similarity in Python. This works for small datasets (<10k chunks) but won't scale. A production version should use pgvector's `ORDER BY embedding <=> $1 LIMIT n` for approximate nearest neighbor search. The `LawChunk` model already imports `pgvector.sqlalchemy.Vector` — the infrastructure is ready.
 
-### 12.4 Why SQLite in development?
+### 12.4 Why Supabase REST API instead of SQLAlchemy ORM?
 
-`DATABASE_URL=sqlite+aiosqlite:///./lexagent.db` enables zero-setup local development. The `create_tables()` function handles SQLite's lack of schema migration by creating tables individually. In production, switch to PostgreSQL with `asyncpg`.
+All user data (users, cases, messages) is stored server-side via Supabase REST API using `supabase-py` with the `service_role` key. This eliminates direct database connections (`DATABASE_URL` is unused for data operations). The SQLite database is only used at startup by the health endpoint and is otherwise unused by API routes.
+
+Benefits:
+- No connection pooling or ORM management needed
+- RLS bypass via service_role key for admin writes
+- Data lives in Supabase — accessible from any device
+- Supabase Auth handles password hashing and validation
 
 ### 12.5 BM25 squashing function
 
@@ -495,16 +510,16 @@ BM25 scores are unbounded (can be >100). The `_squash_bm25` function (`x / (x + 
 | Key | Default | Description |
 |---|---|---|
 | `GITHUB_TOKEN` | — | GitHub Personal Access Token for GitHub Models API |
-| `SUPABASE_URL` | — | Supabase project URL (for auth + law_chunks) |
+| `SUPABASE_URL` | — | Supabase project URL (auth + REST API + law_chunks) |
 | `SUPABASE_KEY` | — | Supabase anon/public key |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./lexagent.db` | SQLAlchemy async connection string |
+| `SUPABASE_SERVICE_KEY` | — | Supabase service_role key (all data writes) |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./lexagent.db` | Unused for data ops — kept for startup |
 | `JWT_SECRET` | `change-this-secret` | HMAC secret for JWT signing |
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
 | `ACCESS_TOKEN_EXPIRE_DAYS` | `7` | JWT expiry |
 | `APP_ENV` | `development` | Controls SQLAlchemy echo logging |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated CORS origins |
 | `LLM_MODEL` | `gpt-4o` | Overridden in .env to `microsoft/Phi-4-reasoning` |
-| `SUPABASE_SERVICE_KEY` | — | Supabase service_role key (for Storage uploads only) |
 | `SUPABASE_STORAGE_BUCKET` | `legal-notices` | Supabase Storage bucket for generated PDFs |
 
 ---
@@ -523,9 +538,9 @@ Swagger UI: `http://localhost:8000/docs`
 
 ### First-time setup
 
-1. Ingest law documents into Supabase `law_chunks` table (run `ingest_laws.py` in `scripts/`)
-2. Delete `lexagent.db` if schema changed (new columns added to Case model)
-3. Server auto-creates tables on startup
+1. Run `supabase_script.txt` in Supabase SQL Editor — creates all 4 tables (`users`, `cases`, `case_messages`, `law_chunks`), indexes, pgvector extension, and RLS policies
+2. Ingest law documents into Supabase `law_chunks` table (run `ingest_laws.py` in `scripts/`)
+3. No local database setup needed — all data lives in Supabase
 4. First voice transcription downloads `openai/whisper-base` (~150MB) from HuggingFace — ensure internet access
 
 ### Testing the full flow

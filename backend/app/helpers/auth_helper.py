@@ -5,15 +5,10 @@ import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db
-from app.models.user import User
+from app.services.supabase_db import SupabaseService
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 
@@ -123,22 +118,6 @@ class AuthHelper:
         }
 
     @staticmethod
-    def supabase_profile_response(user: dict) -> dict:
-        metadata = user.get("user_metadata") or {}
-        return {
-            "email": user.get("email"),
-            "full_name": metadata.get("full_name") or "",
-            "preferred_language": metadata.get("preferred_language") or "en",
-            "case_count": 0,
-        }
-
-    @staticmethod
-    async def get_current_supabase_user(
-        credentials: HTTPAuthorizationCredentials = Depends(security),
-    ) -> dict:
-        return await AuthHelper.supabase_get_user(credentials.credentials)
-
-    @staticmethod
     async def get_current_user_id(
         credentials: HTTPAuthorizationCredentials = Depends(security),
     ) -> str:
@@ -149,12 +128,24 @@ class AuthHelper:
         return user_id
 
     @staticmethod
-    def hash_password(password: str) -> str:
-        return pwd_context.hash(password)
+    def get_current_user(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+    ) -> dict:
+        payload = AuthHelper.decode_jwt(credentials.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    @staticmethod
-    def verify_password(plain: str, hashed: str) -> bool:
-        return pwd_context.verify(plain, hashed)
+        try:
+            parsed_user_id = UUID(user_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+
+        supabase = SupabaseService()
+        user = supabase.get_user(str(parsed_user_id))
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
 
     @staticmethod
     def create_jwt(user_id: str) -> str:
@@ -171,24 +162,3 @@ class AuthHelper:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token",
             ) from exc
-
-    @staticmethod
-    async def get_current_user(
-        credentials: HTTPAuthorizationCredentials = Depends(security),
-        db: AsyncSession = Depends(get_db),
-    ) -> User:
-        payload = AuthHelper.decode_jwt(credentials.credentials)
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-        try:
-            parsed_user_id = UUID(user_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
-
-        result = await db.execute(select(User).where(User.id == parsed_user_id))
-        user = result.scalar_one_or_none()
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-        return user
