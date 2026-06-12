@@ -47,6 +47,7 @@
     {% endif %}
 
     {% if case.clarifying_questions %}
+    {% with case_id = case.case_id %}
     <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
         <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Additional Information Needed</h4>
         <form class="space-y-3">
@@ -62,7 +63,7 @@
             {% endfor %}
             <button type="button"
                     class="btn btn-sm btn-primary rounded-full gap-1.5"
-                    onclick="submitClarifyingAnswers('{{ case.case_id }}')">
+                    onclick="submitClarifyingAnswers('{{ case_id }}')">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
@@ -70,6 +71,7 @@
             </button>
         </form>
     </div>
+    {% endwith %}
     {% endif %}
 
     {% with buttons = case.action_buttons %}{% include "partials/action_buttons.html" %}{% endwith %}

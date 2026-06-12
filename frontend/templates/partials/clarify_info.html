@@ -15,7 +15,7 @@
                    required>
         </div>
         {% endfor %}
-        <input type="hidden" name="collected_info" value="{}">
+        <input type="hidden" name="collected_info" value='{{ collected_info_json or "{}" }}'>
 
         <button type="submit"
                 class="btn btn-sm btn-primary rounded-full mt-2 gap-1.5"

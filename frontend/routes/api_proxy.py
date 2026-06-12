@@ -152,6 +152,7 @@ def execute_step(case_id: str, step_number: int):
                 response=response,
                 case_id=case_id,
                 step_number=step_number,
+                collected_info_json=json.dumps(collected_info),
             )
         return render_template(
             "partials/chat_response.html",
