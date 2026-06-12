@@ -71,6 +71,26 @@ function startLoadingSteps() {
     }, 1200);
 }
 
+function submitClarifyingAnswers(caseId) {
+    var answers = [];
+    document.querySelectorAll('.clarify-answer').forEach(function(input) {
+        var val = input.value.trim();
+        if (val) {
+            var label = input.closest('div').querySelector('label');
+            var question = label ? label.textContent : input.getAttribute('data-key');
+            answers.push(question + ': ' + val);
+        }
+    });
+    if (answers.length === 0) return;
+    var message = 'Here are my answers to your questions:\n' + answers.join('\n');
+    htmx.ajax('POST', '/api/cases/' + caseId + '/chat', {
+        values: {message: message, current_notice_draft: window.NOTICE_DRAFT || ''},
+        target: '#chat-messages',
+        swap: 'beforeend',
+        indicator: '#chat-typing'
+    });
+}
+
 document.addEventListener('htmx:beforeRequest', (e) => {
     const form = e.detail.elt;
     if (form && form.id === 'chat-form') {

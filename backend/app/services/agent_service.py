@@ -114,6 +114,35 @@ class AgentService(IAgentService):
 
         reasoning_trace = []
 
+        # ── Round 0: Check for vagueness ───────────────────────────────────────
+        vague_prompt = (
+            f"Problem: {description}\n\n"
+            f"Is this legal problem description too vague to provide "
+            f"meaningful legal advice? If yes, generate up to 3 clarifying "
+            f"questions that would help understand the situation better.\n\n"
+            f"Return ONLY valid JSON:\n"
+            f'{{"is_vague": true/false, '
+            f'"clarifying_questions": [{{"question": "your question here", '
+            f'"key": "short_key_for_this_question"}}]}}'
+            f"\nIf not vague, set clarifying_questions to an empty array."
+        )
+        response = await self.client.chat.completions.create(
+            model=FAST_MODEL,
+            messages=[
+                {"role": "system", "content": self.legal.system_prompt()},
+                {"role": "user", "content": vague_prompt},
+            ],
+            max_tokens=1000,
+        )
+        vague_text = response.choices[0].message.content.strip() or ""
+        try:
+            vague_result = _extract_json(vague_text)
+        except ValueError:
+            vague_result = {"is_vague": False, "clarifying_questions": []}
+        is_vague = vague_result.get("is_vague", False)
+        vague_questions = vague_result.get("clarifying_questions", [])
+        reasoning_trace.append(f"[check_vagueness] is_vague={is_vague} questions={len(vague_questions)}")
+
         # ── Round 1: Classify case ────────────────────────────────────────────
         classify_prompt = (
             f"Problem: {description}\n\n"
@@ -217,7 +246,7 @@ class AgentService(IAgentService):
 
         clarifying_questions = [
             ClarifyingQuestion(question=q.get("question", ""), key=q.get("key", ""))
-            for q in final_data.get("clarifying_questions", [])
+            for q in (vague_questions + final_data.get("clarifying_questions", []))
         ]
 
         action_buttons_items = [

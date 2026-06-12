@@ -140,12 +140,11 @@ def execute_step(case_id: str, step_number: int):
             doc = response["document"]
             docs = CaseService(token).get_documents(case_id)
             return render_template(
-                "partials/notice_panel.html",
-                draft=doc.get("content", ""),
-                case_id=case_id,
-                pdf_url=None,
+                "partials/step_document_success.html",
+                response=response,
+                doc=doc,
                 documents=docs,
-                active_doc_id=doc.get("id"),
+                case_id=case_id,
             )
         if response.get("clarifying_questions"):
             return render_template(

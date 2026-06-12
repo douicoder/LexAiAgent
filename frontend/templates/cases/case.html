@@ -53,17 +53,27 @@
                     {% endif %}
                     {% if case.clarifying_questions %}
                     <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
-                        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Clarifying Questions</h4>
-                        <div class="space-y-2">
+                        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Additional Information Needed</h4>
+                        <form class="space-y-3">
                             {% for q in case.clarifying_questions %}
-                            <button type="button"
-                                    class="question-card w-full text-left p-3 rounded-xl border border-slate-200 bg-white hover:border-accent transition-colors text-sm"
-                                    data-message="{{ q.question }}"
-                                    onclick="sendActionMessage(this)">
-                                {{ q.question }}
-                            </button>
+                            <div>
+                                <label class="text-sm text-slate-600 mb-1 block">{{ q.question }}</label>
+                                <input type="text"
+                                       id="clarify_{{ q.key }}"
+                                       class="input input-sm input-bordered w-full rounded-xl text-sm clarify-answer"
+                                       placeholder="Your answer..."
+                                       data-key="{{ q.key }}">
+                            </div>
                             {% endfor %}
-                        </div>
+                            <button type="button"
+                                    class="btn btn-sm btn-primary rounded-full gap-1.5"
+                                    onclick="submitClarifyingAnswers('{{ case_id }}')">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                Submit Answers
+                            </button>
+                        </form>
                     </div>
                     {% endif %}
                     {% with buttons = case.action_buttons %}{% include "partials/action_buttons.html" %}{% endwith %}

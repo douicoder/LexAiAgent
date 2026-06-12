@@ -1,8 +1,8 @@
-<div class="response-card p-4 rounded-xl bg-blue-50 border border-blue-100 mt-4">
+<div class="response-card p-4 rounded-xl bg-blue-50 border border-blue-100 mt-2">
     <p class="text-sm text-slate-700 mb-3">{{ response.reply }}</p>
 
     <form hx-post="/api/cases/{{ case_id }}/execute-step/{{ step_number }}"
-          hx-target="#documents-panel"
+          hx-target="#step-{{ step_number }}-response"
           hx-swap="innerHTML"
           class="space-y-2">
         {% for q in response.clarifying_questions %}
@@ -11,7 +11,8 @@
             <input type="text"
                    name="field_{{ q.key }}"
                    class="input input-sm input-bordered w-full rounded-xl text-sm"
-                   placeholder="Enter {{ q.question|lower }}">
+                   placeholder="Enter {{ q.question|lower }}"
+                   required>
         </div>
         {% endfor %}
         <input type="hidden" name="collected_info" value="{}">
