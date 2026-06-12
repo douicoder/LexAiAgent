@@ -25,36 +25,39 @@ LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = "gpt-4o"
 
 # ── Document type definitions ───────────────────────────────────────────
+# Only ask for personal details NOT already in the case description.
+# The LLM receives the full case description and extracts subject, facts, and
+# relief details automatically — no need to make users re-enter them.
 DOCUMENT_TYPES = {
     "demand_letter": {
         "title": "Formal Demand Letter",
-        "required_info": ["tenant_name", "tenant_address", "landlord_name", "landlord_address", "deposit_amount", "property_address", "move_out_date"],
-        "info_labels": {"tenant_name": "Your full name", "tenant_address": "Your current address", "landlord_name": "Landlord's full name", "landlord_address": "Landlord's address", "deposit_amount": "Security deposit amount (₹)", "property_address": "Rented property address", "move_out_date": "Date you vacated the property"},
+        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
+        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
     },
     "legal_notice": {
         "title": "Legal Notice",
-        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address", "subject", "details"],
-        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address", "subject": "Subject of the notice", "details": "Brief description of the issue"},
+        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
+        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
     },
     "court_filing": {
         "title": "Court Filing / Petition",
-        "required_info": ["petitioner_name", "petitioner_address", "respondent_name", "respondent_address", "court_name", "case_details", "relief_sought"],
-        "info_labels": {"petitioner_name": "Your full name (Petitioner)", "petitioner_address": "Your address", "respondent_name": "Respondent's full name", "respondent_address": "Respondent's address", "court_name": "Name of the court", "case_details": "Detailed facts of the case", "relief_sought": "What relief you are seeking from the court"},
+        "required_info": ["petitioner_name", "petitioner_address", "respondent_name", "respondent_address", "court_name"],
+        "info_labels": {"petitioner_name": "Your full name (Petitioner)", "petitioner_address": "Your address", "respondent_name": "Respondent's full name", "respondent_address": "Respondent's address", "court_name": "Name of the court"},
     },
     "affidavit": {
         "title": "Affidavit",
-        "required_info": ["deponent_name", "deponent_address", "contents"],
-        "info_labels": {"deponent_name": "Your full name (Deponent)", "deponent_address": "Your address", "contents": "Contents of the affidavit"},
+        "required_info": ["deponent_name", "deponent_address"],
+        "info_labels": {"deponent_name": "Your full name (Deponent)", "deponent_address": "Your address"},
     },
     "complaint": {
         "title": "Formal Complaint",
-        "required_info": ["complainant_name", "complainant_address", "respondent_name", "complaint_details"],
-        "info_labels": {"complainant_name": "Your full name (Complainant)", "complainant_address": "Your address", "respondent_name": "Respondent's name", "complaint_details": "Details of the complaint"},
+        "required_info": ["complainant_name", "complainant_address", "respondent_name"],
+        "info_labels": {"complainant_name": "Your full name (Complainant)", "complainant_address": "Your address", "respondent_name": "Respondent's name"},
     },
     "agreement": {
         "title": "Legal Agreement",
-        "required_info": ["party_a_name", "party_a_address", "party_b_name", "party_b_address", "terms"],
-        "info_labels": {"party_a_name": "First Party name", "party_a_address": "First Party address", "party_b_name": "Second Party name", "party_b_address": "Second Party address", "terms": "Key terms of the agreement"},
+        "required_info": ["party_a_name", "party_a_address", "party_b_name", "party_b_address"],
+        "info_labels": {"party_a_name": "First Party name", "party_a_address": "First Party address", "party_b_name": "Second Party name", "party_b_address": "Second Party address"},
     },
 }
 
@@ -337,11 +340,14 @@ class AgentService(IAgentService):
             f"You are drafting a legal document for an Indian legal case.\n\n"
             f"Document type: {doc_type}\n"
             f"Title: {doc_config['title']}\n\n"
-            f"Case description: {description}\n"
+            f"Case description (extract subject, facts, and relief from here):\n{description}\n"
             f"Case type: {case_type} ({severity})\n\n"
             f"Relevant law sections:\n{json.dumps(relevant_sections, indent=2, default=str)}\n\n"
-            f"Information provided:\n{json.dumps(request.collected_info, indent=2)}\n\n"
-            f"Generate the complete legal document in proper legal format.\n"
+            f"Personal details provided by the user:\n{json.dumps(request.collected_info, indent=2)}\n\n"
+            f"Using the case description for the content and the personal details above for names/addresses, "
+            f"generate the complete legal document in proper legal format.\n"
+            f"Do NOT ask the user to re-explain their issue — everything needed is in the case description "
+            f"and personal details above.\n"
             f"Use appropriate legal language, sections, and references.\n"
             f"Make it formal and ready for use.\n\n"
             f"Return ONLY valid JSON with these exact keys:\n"
