@@ -1,0 +1,600 @@
+You are a Staff Frontend Engineer.
+
+Build a production-quality frontend for LexAgent using:
+
+- Flask 3
+- Jinja2
+- TailwindCSS
+- DaisyUI
+- HTMX
+- Alpine.js
+
+DO NOT use React.
+DO NOT use Next.js.
+DO NOT use Vue.
+
+The backend API already exists.
+
+Use the API documentation as the source of truth.
+
+The UI must feel like Claude AI, Harvey AI, Linear, and Notion combined.
+
+-------------------------------------------------
+GOAL
+-------------------------------------------------
+
+Create an AI-first legal workspace.
+
+Users should be able to:
+
+1. Login/Register
+2. Create legal cases
+3. Chat with LexAgent
+4. Answer clarifying questions
+5. Edit legal notices via chat
+6. Generate PDFs
+7. Search legal documents
+8. Manage previous cases
+
+The application must feel premium and modern.
+
+-------------------------------------------------
+PROJECT STRUCTURE
+-------------------------------------------------
+
+frontend/
+
+├── app.py
+├── requirements.txt
+├── .env
+│
+├── services/
+│   ├── auth_service.py
+│   ├── case_service.py
+│   ├── agent_service.py
+│   ├── document_service.py
+│   └── voice_service.py
+│
+├── templates/
+│   ├── base.html
+│   ├── auth.html
+│   ├── dashboard.html
+│   ├── case.html
+│   ├── research.html
+│   ├── settings.html
+│   └── components/
+│       ├── sidebar.html
+│       ├── chat_message.html
+│       ├── notice_panel.html
+│       ├── law_card.html
+│       └── loading_state.html
+│
+├── static/
+│   ├── css/
+│   │   └── app.css
+│   │
+│   ├── js/
+│   │   ├── chat.js
+│   │   ├── voice.js
+│   │   ├── pdf.js
+│   │   └── research.js
+│   │
+│   └── images/
+│
+└── utils/
+    ├── api.py
+    ├── auth.py
+    └── helpers.py
+
+-------------------------------------------------
+DESIGN SYSTEM
+-------------------------------------------------
+
+Font:
+Inter
+
+Colors:
+
+Primary:
+#0F172A
+
+Accent:
+#2563EB
+
+Success:
+#10B981
+
+Warning:
+#F59E0B
+
+Danger:
+#EF4444
+
+Border Radius:
+16px
+
+Use generous spacing.
+
+Use soft shadows.
+
+Use glass effects sparingly.
+
+-------------------------------------------------
+LAYOUT
+-------------------------------------------------
+
+Desktop Layout:
+
+-------------------------------------------------
+| Sidebar | Chat Workspace | Notice Workspace |
+-------------------------------------------------
+
+Sidebar width:
+280px
+
+Chat:
+Flexible center area
+
+Notice panel:
+420px
+
+-------------------------------------------------
+SIDEBAR
+-------------------------------------------------
+
+Top:
+
++ New Legal Matter
+
+Middle:
+
+Case history
+
+Use GET /cases
+
+Group:
+
+Today
+Yesterday
+This Week
+Older
+
+Display:
+
+- case title
+- status
+- created date
+
+Bottom:
+
+User profile
+
+Use GET /auth/me
+
+Show:
+
+- name
+- email
+- case count
+- logout button
+
+-------------------------------------------------
+CHAT EXPERIENCE
+-------------------------------------------------
+
+Must feel similar to Claude.
+
+DO NOT use cartoon chat bubbles.
+
+Messages should be rendered as content blocks.
+
+User block:
+
+Name
+Message
+
+Assistant block:
+
+LexAgent
+Response
+
+Wide readable layout.
+
+Maximum width:
+900px
+
+-------------------------------------------------
+EMPTY STATE
+-------------------------------------------------
+
+Center screen:
+
+How can LexAgent help today?
+
+Suggestions:
+
+Landlord not returning deposit
+
+Property registration issue
+
+Tenant eviction
+
+Need legal notice
+
+Understand legal rights
+
+-------------------------------------------------
+FIRST MESSAGE FLOW
+-------------------------------------------------
+
+Call:
+
+POST /cases
+
+Show animated steps:
+
+Analyzing case...
+
+Searching laws...
+
+Preparing recommendations...
+
+Drafting legal notice...
+
+Then render response.
+
+-------------------------------------------------
+RESPONSE CARDS
+-------------------------------------------------
+
+Render:
+
+Summary
+
+Severity
+
+Relevant Sections
+
+Next Steps
+
+Clarifying Questions
+
+Action Buttons
+
+Use the exact API response structure.
+
+-------------------------------------------------
+CLARIFYING QUESTIONS
+-------------------------------------------------
+
+Render questions as cards.
+
+Render action_buttons as clickable chips.
+
+One click sends the suggested message.
+
+-------------------------------------------------
+NOTICE WORKSPACE
+-------------------------------------------------
+
+Right panel.
+
+Tabs:
+
+Draft
+
+Preview
+
+History
+
+Display full legal_notice_draft.
+
+Never truncate.
+
+-------------------------------------------------
+NOTICE UPDATES
+-------------------------------------------------
+
+When POST /agent/chat returns:
+
+updated_notice
+
+Update draft immediately.
+
+Highlight changes visually.
+
+Show "Notice Updated" badge.
+
+-------------------------------------------------
+PDF WORKFLOW
+-------------------------------------------------
+
+Button:
+
+Generate Legal Notice PDF
+
+Calls:
+
+POST /cases/{id}/pdf
+
+Show:
+
+Loading state
+
+Success state
+
+Open PDF
+
+Download PDF
+
+-------------------------------------------------
+LEGAL RESEARCH PAGE
+-------------------------------------------------
+
+Route:
+
+/research
+
+Use:
+
+GET /documents/search
+
+Features:
+
+Search box
+
+Filters
+
+Result cards
+
+Act
+
+Section
+
+Score
+
+Excerpt
+
+-------------------------------------------------
+VOICE INPUT
+-------------------------------------------------
+
+Use:
+
+POST /voice/transcribe
+
+Microphone button beside chat input.
+
+Allow:
+
+Record
+Upload
+Transcribe
+Insert into chat
+
+-------------------------------------------------
+HTMX
+-------------------------------------------------
+
+Use HTMX wherever possible.
+
+Avoid unnecessary JavaScript.
+
+Use partial template updates.
+
+Use server-rendered HTML fragments.
+
+-------------------------------------------------
+ALPINE.JS
+-------------------------------------------------
+
+Use Alpine only for:
+
+Dropdowns
+
+Modals
+
+Tabs
+
+Small interactions
+
+-------------------------------------------------
+PERFORMANCE
+-------------------------------------------------
+
+Minimize JavaScript.
+
+Prefer server-rendered UI.
+
+Use lazy loading.
+
+Use skeleton loaders.
+
+-------------------------------------------------
+OUTPUT
+-------------------------------------------------
+
+Generate complete code.
+
+Generate all templates.
+
+Generate all routes.
+
+Generate all service files.
+
+Generate API integrations.
+
+Generate responsive layouts.
+
+Generate production-ready code.
+
+No placeholders.
+
+No mock data.
+
+Use the API contract exactly as documented.
+
+The final result should feel like a premium AI legal assistant comparable to Claude and Harvey AI while remaining fully built in Flask + Jinja2.
+
+frontend/
+│
+├── app.py
+├── config.py
+├── requirements.txt
+├── .env
+├── README.md
+│
+├── routes/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── dashboard.py
+│   ├── cases.py
+│   ├── research.py
+│   ├── settings.py
+│   └── api_proxy.py
+│
+├── services/
+│   ├── __init__.py
+│   ├── auth_service.py
+│   ├── case_service.py
+│   ├── chat_service.py
+│   ├── document_service.py
+│   ├── voice_service.py
+│   └── pdf_service.py
+│
+├── utils/
+│   ├── __init__.py
+│   ├── api_client.py
+│   ├── auth.py
+│   ├── formatters.py
+│   ├── constants.py
+│   └── helpers.py
+│
+├── templates/
+│   │
+│   ├── base.html
+│   │
+│   ├── auth/
+│   │   ├── login.html
+│   │   └── register.html
+│   │
+│   ├── dashboard/
+│   │   └── dashboard.html
+│   │
+│   ├── cases/
+│   │   ├── case.html
+│   │   ├── case_list.html
+│   │   ├── notice_history.html
+│   │   └── legal_sections.html
+│   │
+│   ├── research/
+│   │   └── research.html
+│   │
+│   ├── settings/
+│   │   └── settings.html
+│   │
+│   ├── partials/
+│   │   ├── sidebar.html
+│   │   ├── navbar.html
+│   │   ├── chat_message.html
+│   │   ├── typing_indicator.html
+│   │   ├── law_card.html
+│   │   ├── severity_badge.html
+│   │   ├── action_buttons.html
+│   │   ├── notice_panel.html
+│   │   ├── case_card.html
+│   │   ├── empty_state.html
+│   │   ├── loading_state.html
+│   │   └── voice_recorder.html
+│   │
+│   └── modals/
+│       ├── generate_pdf.html
+│       ├── delete_case.html
+│       └── logout.html
+│
+├── static/
+│   │
+│   ├── css/
+│   │   ├── app.css
+│   │   ├── components.css
+│   │   └── animations.css
+│   │
+│   ├── js/
+│   │   ├── chat.js
+│   │   ├── voice.js
+│   │   ├── pdf.js
+│   │   ├── research.js
+│   │   ├── sidebar.js
+│   │   └── notifications.js
+│   │
+│   ├── icons/
+│   │
+│   └── images/
+│       ├── logo.svg
+│       ├── hero.png
+│       └── empty-state.svg
+│
+├── data/
+│   └── language_strings.json
+│
+└── tests/
+    ├── test_auth.py
+    ├── test_cases.py
+    ├── test_chat.py
+    └── test_research.py
+
+/auth/login
+/auth/register
+
+/dashboard
+│
+├── New Legal Matter
+│
+├── Case History
+│
+└── Recent Cases
+
+/case/<case_id>
+
+├── Conversation
+├── Legal Intelligence
+├── Notice Draft
+├── PDF Actions
+└── Case Timeline
+
+/research
+
+├── Search
+├── Filters
+└── Results
+
+/settings
+
+├── Profile
+├── Language
+├── Preferences
+└── Logout
+
+component hierchy
+Dashboard
+
+├── Navbar
+├── Sidebar
+│   ├── New Matter Button
+│   ├── Case Groups
+│   └── User Profile
+│
+├── Chat Workspace
+│   ├── Empty State
+│   ├── Chat Messages
+│   ├── Typing Indicator
+│   ├── Clarifying Questions
+│   ├── Action Buttons
+│   └── Message Input
+│
+└── Right Workspace
+    ├── Notice Panel
+    ├── Relevant Laws
+    ├── Severity Badge
+    ├── Next Steps
+    └── PDF Actions

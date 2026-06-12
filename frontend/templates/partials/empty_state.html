@@ -1,0 +1,14 @@
+<div class="flex-1 flex flex-col items-center justify-center px-6 py-12 max-w-[900px] mx-auto w-full">
+    <img src="{{ url_for('static', filename='images/empty-state.svg') }}" alt="" class="w-48 h-48 mb-8 opacity-80">
+    <h2 class="text-2xl font-semibold text-primary mb-2">How can LexAgent help today?</h2>
+    <p class="text-slate-500 text-center mb-8 max-w-md">Describe your legal issue and I'll analyze applicable laws, draft a notice, and guide your next steps.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
+        {% for suggestion in suggestions %}
+        <button type="button"
+                class="suggestion-chip text-left px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-accent hover:bg-blue-50/50 transition-all text-sm text-slate-600 shadow-sm"
+                onclick="document.getElementById('chat-input').value = this.textContent.trim(); document.getElementById('chat-input').focus();">
+            {{ suggestion }}
+        </button>
+        {% endfor %}
+    </div>
+</div>

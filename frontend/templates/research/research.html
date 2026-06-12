@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Legal Research — LexAgent{% endblock %}
+{% block body %}
+<div class="h-screen flex flex-col overflow-hidden">
+    {% include "partials/navbar.html" %}
+    <div class="flex flex-1 overflow-hidden">
+        {% include "partials/sidebar.html" %}
+
+        <main class="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+            <div class="max-w-4xl mx-auto">
+                <h1 class="text-2xl font-semibold text-primary mb-1">Legal Research</h1>
+                <p class="text-slate-500 mb-8">Search Indian law texts with hybrid RAG search</p>
+
+                <form method="GET" action="{{ url_for('research.index') }}"
+                      class="card bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8 space-y-4"
+                      hx-get="{{ url_for('research.index') }}"
+                      hx-target="#search-results"
+                      hx-push-url="true"
+                      hx-indicator="#search-loading">
+                    <div class="form-control">
+                        <input type="text" name="q" value="{{ query }}" required minlength="2"
+                               placeholder="Search laws, e.g. rent deposit refund"
+                               class="input input-bordered rounded-xl w-full text-base">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-xs">Results</span></label>
+                            <input type="number" name="top_k" value="{{ top_k }}" min="1" max="20"
+                                   class="input input-bordered rounded-xl input-sm">
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-xs">Filter Acts</span></label>
+                            <input type="text" name="acts" value="{{ acts }}" placeholder="Comma-separated"
+                                   class="input input-bordered rounded-xl input-sm">
+                        </div>
+                        <div class="form-control">
+                            <label class="label"><span class="label-text text-xs">Min Score</span></label>
+                            <input type="number" name="min_score" value="{{ min_score }}" min="0" max="1" step="0.1"
+                                   class="input input-bordered rounded-xl input-sm">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <label class="label cursor-pointer gap-2">
+                            <input type="checkbox" name="hybrid" value="true" class="checkbox checkbox-sm" {% if hybrid %}checked{% endif %}>
+                            <span class="label-text text-sm">Hybrid search</span>
+                        </label>
+                        <label class="label cursor-pointer gap-2">
+                            <input type="checkbox" name="rerank" value="true" class="checkbox checkbox-sm" {% if rerank %}checked{% endif %}>
+                            <span class="label-text text-sm">Rerank</span>
+                        </label>
+                        <button type="submit" class="btn btn-primary rounded-xl ml-auto">Search</button>
+                    </div>
+                </form>
+
+                <div id="search-loading" class="htmx-indicator text-center py-8">
+                    <span class="loading loading-spinner loading-md text-accent"></span>
+                </div>
+
+                <div id="search-results">
+                    {% if query and not results %}
+                    <p class="text-center text-slate-500 py-12">No results found for "{{ query }}"</p>
+                    {% elif results %}
+                    <p class="text-sm text-slate-500 mb-4">{{ results|length }} results for "{{ query }}"</p>
+                    <div class="space-y-4">
+                        {% for result in results %}
+                        <div class="law-card p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div class="flex items-start justify-between gap-4 mb-3">
+                                <div>
+                                    <p class="font-semibold text-primary">{{ result.act }}</p>
+                                    <p class="text-sm text-accent mt-1">
+                                        {% if result.section_number %}{{ result.section_number }}{% endif %}
+                                        {% if result.section_title %} — {{ result.section_title }}{% endif %}
+                                    </p>
+                                    {% if result.chapter %}
+                                    <p class="text-xs text-slate-400 mt-1">{{ result.chapter }}</p>
+                                    {% endif %}
+                                </div>
+                                <span class="badge badge-ghost rounded-lg">{{ (result.score * 100)|int }}% match</span>
+                            </div>
+                            <p class="text-sm text-slate-600 leading-relaxed">{{ result.excerpt }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/research.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+{% endblock %}

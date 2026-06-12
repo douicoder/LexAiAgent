@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from app.dto.agent_dto import ActionButton, ClarifyingQuestion, NextStep
+from app.dto.agent_dto import ActionButton, ActionStep, ClarifyingQuestion
 
 
 class CaseTypeEnum(str, Enum):
@@ -47,7 +47,7 @@ class CaseResponseDTO(BaseModel):
     severity: SeverityEnum | None = None
     relevant_sections: list[LegalSectionDTO] = []
     summary: str | None = None
-    next_steps: list[NextStep] = []
+    next_steps: list[ActionStep] = []
     pdf_ready: bool = False
     created_at: datetime | None = None
     ai_message: str | None = None

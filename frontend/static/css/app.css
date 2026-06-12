@@ -1,0 +1,68 @@
+[x-cloak] { display: none !important; }
+
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.btn-primary {
+    background-color: #2563EB;
+    border-color: #2563EB;
+}
+
+.btn-primary:hover {
+    background-color: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: block;
+}
+
+.htmx-request .chat-input-area {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.notice-text {
+    word-break: break-word;
+}
+
+.notice-highlight {
+    background: #fef08a;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.notice-preview {
+    min-height: 400px;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

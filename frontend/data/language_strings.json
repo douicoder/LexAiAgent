@@ -1,0 +1,24 @@
+{
+  "en": {
+    "app_name": "LexAgent",
+    "tagline": "Your AI legal workspace",
+    "empty_state_title": "How can LexAgent help today?",
+    "new_matter": "New Legal Matter",
+    "sign_in": "Sign In",
+    "sign_out": "Sign Out",
+    "research": "Legal Research",
+    "settings": "Settings",
+    "generate_pdf": "Generate Legal Notice PDF"
+  },
+  "hi": {
+    "app_name": "LexAgent",
+    "tagline": "आपका AI कानूनी कार्यक्षेत्र",
+    "empty_state_title": "LexAgent आज कैसे मदद कर सकता है?",
+    "new_matter": "नया कानूनी मामला",
+    "sign_in": "साइन इन",
+    "sign_out": "साइन आउट",
+    "research": "कानूनी अनुसंधान",
+    "settings": "सेटिंग्स",
+    "generate_pdf": "कानूनी नोटिस PDF बनाएं"
+  }
+}

@@ -89,7 +89,24 @@ CREATE TABLE IF NOT EXISTS law_chunks (
 CREATE INDEX IF NOT EXISTS idx_law_chunks_act_name ON law_chunks (act_name);
 
 -- ═══════════════════════════════════════════════════════════════
--- 5. Row Level Security (optional — backend handles auth itself)
+-- 5. case_documents (generated documents per case step)
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS case_documents (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    case_id     UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    doc_type    VARCHAR NOT NULL,
+    title       VARCHAR NOT NULL,
+    content     TEXT NOT NULL DEFAULT '',
+    status      VARCHAR DEFAULT 'draft',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_case_documents_case_id
+    ON case_documents (case_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- 6. Row Level Security (optional — backend handles auth itself)
 -- ═══════════════════════════════════════════════════════════════
 -- The backend authenticates via its own JWT (HS256) and connects
 -- directly via SQLAlchemy using the DATABASE_URL (which uses the
@@ -98,6 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_law_chunks_act_name ON law_chunks (act_name);
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE case_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE law_chunks ENABLE ROW LEVEL SECURITY;
 
@@ -112,6 +130,16 @@ CREATE POLICY "cases_own"
     ON cases FOR ALL
     USING (user_id = auth.uid())
     WITH CHECK (user_id = auth.uid());
+
+-- Documents: only see documents for your own cases
+CREATE POLICY "documents_own"
+    ON case_documents FOR ALL
+    USING (
+        case_id IN (SELECT id FROM cases WHERE user_id = auth.uid())
+    )
+    WITH CHECK (
+        case_id IN (SELECT id FROM cases WHERE user_id = auth.uid())
+    );
 
 -- Messages: only see messages for your own cases
 CREATE POLICY "messages_own"
@@ -129,31 +157,30 @@ CREATE POLICY "law_chunks_read"
     USING (true);
 
 -- ═══════════════════════════════════════════════════════════════
--- 6. pgvector RPC (for fast similarity search — optional)
---    Uncomment and adjust if you want the fast path in rag_service
+-- 7. pgvector RPC (for fast similarity search — required by rag_service)
 -- ═══════════════════════════════════════════════════════════════
---
--- CREATE OR REPLACE FUNCTION match_law_chunks(
---     query_embedding vector(1536),
---     match_count    int DEFAULT 10
--- ) RETURNS TABLE(
---     id        UUID,
---     act_name  VARCHAR,
---     chunk_text TEXT,
---     similarity float
--- ) LANGUAGE plpgsql AS $$
--- BEGIN
---     RETURN QUERY
---     SELECT
---         lc.id,
---         lc.act_name,
---         lc.chunk_text,
---         1 - (lc.embedding <=> query_embedding) AS similarity
---     FROM law_chunks lc
---     ORDER BY lc.embedding <=> query_embedding
---     LIMIT match_count;
--- END;
--- $$;
+
+CREATE OR REPLACE FUNCTION match_law_chunks(
+    query_embedding vector(1536),
+    match_count    int DEFAULT 10
+) RETURNS TABLE(
+    id          UUID,
+    act_name    VARCHAR,
+    chunk_text  TEXT,
+    similarity  float
+) LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        lc.id::UUID,
+        lc.act_name::VARCHAR,
+        lc.chunk_text::TEXT,
+        (1 - (lc.embedding <=> query_embedding))::float AS similarity
+    FROM law_chunks lc
+    ORDER BY lc.embedding <=> query_embedding
+    LIMIT match_count;
+END;
+$$;
 
 -- ═══════════════════════════════════════════════════════════════
 SELECT '✓ Schema migration complete — all tables created' AS result;

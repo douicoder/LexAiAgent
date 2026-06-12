@@ -1,0 +1,78 @@
+{% set role = 'user' %}
+{% set name = current_user_name %}
+{% set content = user_message %}
+{% include "partials/chat_message.html" %}
+
+{% set role = 'assistant' %}
+{% set name = 'LexAgent' %}
+{% set content = case.ai_message or case.summary or 'Analysis complete.' %}
+{% set extra %}
+<div class="mt-6 space-y-6">
+    {% if case.summary %}
+    <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Summary</h4>
+        <p class="text-sm text-slate-700">{{ case.summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if case.severity %}
+    <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Severity</h4>
+        {% with severity = case.severity %}{% include "partials/severity_badge.html" %}{% endwith %}
+    </div>
+    {% endif %}
+
+    {% if case.relevant_sections %}
+    <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Relevant Sections</h4>
+        <div class="space-y-2">
+            {% for section in case.relevant_sections %}
+            {% include "partials/law_card.html" %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if case.next_steps %}
+    <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Action Plan</h4>
+        <div class="space-y-3">
+            {% for step in case.next_steps %}
+            {% with case_id = case.case_id %}
+            {% include "partials/step_with_action.html" %}
+            {% endwith %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if case.clarifying_questions %}
+    <div class="response-card p-4 rounded-xl bg-slate-50 border border-slate-100">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Questions</h4>
+        <div class="space-y-2">
+            {% for q in case.clarifying_questions %}
+            <button type="button"
+                    class="question-card w-full text-left p-3 rounded-xl border border-slate-200 bg-white hover:border-accent hover:bg-blue-50/30 transition-colors text-sm"
+                    data-message="{{ q.question }}"
+                    onclick="sendActionMessage(this)">
+                {{ q.question }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% with buttons = case.action_buttons %}{% include "partials/action_buttons.html" %}{% endwith %}
+</div>
+{% endset %}
+{% include "partials/chat_message.html" %}
+
+<script>
+    if (typeof updateNoticePanel === 'function') {
+        updateNoticePanel({{ case.legal_notice_draft|tojson if case.legal_notice_draft else '""' }}, true);
+    }
+    if (typeof setCaseId === 'function') {
+        setCaseId('{{ case.case_id }}');
+    }
+    window.location.href = '/case/{{ case.case_id }}';
+</script>

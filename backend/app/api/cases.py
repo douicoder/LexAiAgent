@@ -1,8 +1,10 @@
 import datetime
+import io
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
-from app.dto.agent_dto import PdfResponseDTO
+from app.dto.agent_dto import DocumentDTO, PdfResponseDTO
 from app.dto.case_dto import CaseDetailDTO, CaseListResponseDTO, CaseResponseDTO, CreateCaseDTO, MessageDTO
 from app.helpers.auth_helper import AuthHelper
 from app.services.agent_service import AgentService
@@ -116,3 +118,88 @@ async def get_case_messages(
         )
         for m in messages
     ]
+
+
+# ── Document CRUD ──────────────────────────────────────────────────────────
+
+
+@router.get("/{case_id}/documents")
+async def list_documents(
+    case_id: str,
+    current_user_id: str = Depends(AuthHelper.get_current_user_id),
+):
+    supabase = SupabaseService()
+    supabase.get_case(case_id, current_user_id)  # ownership check
+    docs = supabase.get_documents(case_id)
+    return [
+        DocumentDTO(
+            id=d["id"],
+            case_id=d["case_id"],
+            doc_type=d["doc_type"],
+            title=d["title"],
+            content=d["content"],
+            status=d.get("status", "draft"),
+            created_at=d.get("created_at", ""),
+            updated_at=d.get("updated_at"),
+        )
+        for d in docs
+    ]
+
+
+@router.put("/{case_id}/documents/{doc_id}")
+async def update_document(
+    case_id: str,
+    doc_id: str,
+    body: dict,
+    current_user_id: str = Depends(AuthHelper.get_current_user_id),
+):
+    supabase = SupabaseService()
+    supabase.get_case(case_id, current_user_id)
+    doc = supabase.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    content = body.get("content", doc["content"])
+    updated = supabase.update_document(doc_id, {"content": content, "status": body.get("status", doc.get("status", "draft"))})
+    return DocumentDTO(
+        id=updated["id"],
+        case_id=updated["case_id"],
+        doc_type=updated["doc_type"],
+        title=updated["title"],
+        content=updated["content"],
+        status=updated.get("status", "draft"),
+        created_at=updated.get("created_at", ""),
+        updated_at=updated.get("updated_at"),
+    )
+
+
+@router.post("/{case_id}/documents/{doc_id}/preview")
+async def preview_document_pdf(
+    case_id: str,
+    doc_id: str,
+    current_user_id: str = Depends(AuthHelper.get_current_user_id),
+):
+    supabase = SupabaseService()
+    supabase.get_case(case_id, current_user_id)  # ownership check
+    doc = supabase.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    user = supabase.get_user(current_user_id)
+    user_name = user.get("full_name", "Sender") if user else "Sender"
+
+    pdf_svc = PdfService()
+    pdf_bytes = await pdf_svc.generate_legal_notice(
+        notice_content=doc["content"],
+        user_details={"name": user_name, "address": "", "phone": None},
+        recipient_details={"name": "", "address": ""},
+        sections=[],
+        case_type="civil",
+    )
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{doc["title"]}.pdf"',
+        },
+    )

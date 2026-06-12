@@ -1,0 +1,8 @@
+<a href="{{ url_for('cases.view', case_id=case.case_id) }}"
+   class="block p-4 rounded-xl border border-slate-200 bg-white hover:shadow-md transition-shadow">
+    <div class="flex items-start justify-between gap-2">
+        <p class="font-medium text-primary">{{ case.summary[:80] + '...' if case.summary and case.summary|length > 80 else (case.summary or 'Legal Matter') }}</p>
+        {% if case.severity %}{% with severity = case.severity %}{% include "partials/severity_badge.html" %}{% endwith %}{% endif %}
+    </div>
+    <p class="text-xs text-slate-400 mt-2">{{ case.status|replace('_', ' ')|title }}{% if case.created_at %} · {{ case.created_at[:10] }}{% endif %}</p>
+</a>

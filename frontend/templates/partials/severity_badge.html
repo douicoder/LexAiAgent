@@ -1,0 +1,2 @@
+{% set colors = {'low': 'badge-success', 'medium': 'badge-warning', 'high': 'badge-error', 'urgent': 'badge-error'} %}
+<span class="badge {{ colors.get(severity, 'badge-ghost') }} badge-sm rounded-lg capitalize">{{ severity }}</span>

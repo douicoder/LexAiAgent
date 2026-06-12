@@ -1,0 +1,7 @@
+<script>
+    const input = document.getElementById('chat-input');
+    if (input) {
+        input.value = (input.value ? input.value + ' ' : '') + {{ transcript|tojson }};
+        input.focus();
+    }
+</script>

@@ -1,0 +1,31 @@
+<div class="chat-input-area border-t border-slate-200 bg-white p-4 shrink-0">
+    <form id="chat-form"
+          class="max-w-[900px] mx-auto flex items-end gap-2"
+          {% if case_id %}
+          hx-post="{{ url_for('api.chat', case_id=case_id) }}"
+          hx-target="#chat-messages"
+          hx-swap="beforeend"
+          hx-indicator="#chat-typing"
+          {% else %}
+          hx-post="{{ url_for('api.create_case') }}"
+          hx-target="#chat-messages"
+          hx-swap="innerHTML"
+          hx-indicator="#chat-typing"
+          {% endif %}
+          @submit="if (!caseId && typeof startLoadingSteps === 'function') startLoadingSteps()">
+        <input type="hidden" name="current_notice_draft" id="notice-draft-hidden" value="{{ notice_draft or '' }}">
+        <input type="hidden" name="language" value="{{ profile.preferred_language or 'en' }}">
+        <div class="flex-1 relative">
+            <textarea id="chat-input" name="message" rows="1" required
+                      placeholder="Describe your legal issue..."
+                      class="textarea textarea-bordered w-full rounded-2xl resize-none min-h-[48px] max-h-32 py-3 px-4 pr-12 text-sm focus:outline-none focus:border-accent"
+                      oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+        </div>
+        {% include "partials/voice_recorder.html" %}
+        <button type="submit" class="btn btn-primary btn-circle rounded-full shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+        </button>
+    </form>
+</div>

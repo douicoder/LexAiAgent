@@ -111,3 +111,38 @@ class SupabaseService:
             .execute()
         )
         return result.data
+
+    # ── Documents ─────────────────────────────────────────────
+
+    def create_document(self, data: dict) -> dict:
+        result = self.client.table("case_documents").insert(data).execute()
+        return result.data[0]
+
+    def get_documents(self, case_id: str) -> list[dict]:
+        result = (
+            self.client.table("case_documents")
+            .select("*")
+            .eq("case_id", case_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data
+
+    def get_document(self, doc_id: str) -> dict | None:
+        result = (
+            self.client.table("case_documents")
+            .select("*")
+            .eq("id", doc_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def update_document(self, doc_id: str, data: dict) -> dict:
+        import datetime
+        data["updated_at"] = datetime.datetime.utcnow().isoformat()
+        result = self.client.table("case_documents").update(data).eq("id", doc_id).execute()
+        return result.data[0]
+
+    def delete_document(self, doc_id: str) -> bool:
+        result = self.client.table("case_documents").delete().eq("id", doc_id).execute()
+        return len(result.data) > 0

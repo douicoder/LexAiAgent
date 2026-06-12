@@ -1,0 +1,106 @@
+<aside class="notice-panel w-[420px] shrink-0 border-l border-slate-200 bg-white flex flex-col h-full"
+       x-data="{ tab: 'draft', editing: false, docId: '{{ active_doc_id or '' }}' }"
+       id="documents-panel">
+    <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-semibold text-primary">Documents</h3>
+        <div class="flex items-center gap-2">
+            <span x-show="editing" x-cloak class="badge badge-success badge-sm rounded-lg">Editing</span>
+            <button x-show="editing" x-cloak
+                    class="btn btn-xs btn-ghost rounded-full"
+                    @click="editing = false">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="tabs tabs-boxed bg-slate-50 m-4 rounded-xl p-1">
+        <button @click="tab = 'draft'" :class="tab === 'draft' ? 'tab-active bg-white shadow-sm' : ''"
+                class="tab flex-1 rounded-lg text-sm">Document</button>
+        <button @click="tab = 'preview'" :class="tab === 'preview' ? 'tab-active bg-white shadow-sm' : ''"
+                class="tab flex-1 rounded-lg text-sm">Preview</button>
+        <button @click="tab = 'list'" :class="tab === 'list' ? 'tab-active bg-white shadow-sm' : ''"
+                class="tab flex-1 rounded-lg text-sm">All Docs</button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto px-4 pb-4">
+        <div x-show="tab === 'draft'" id="notice-draft-content">
+            <div x-show="!editing">
+                <pre class="notice-text text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">{{ draft or 'No document yet. Click a step action to generate one.' }}</pre>
+                {% if draft and active_doc_id %}
+                <button class="btn btn-xs btn-outline rounded-full mt-3 gap-1.5"
+                        @click="editing = true">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    Edit
+                </button>
+                {% endif %}
+            </div>
+            <div x-show="editing" x-cloak>
+                <textarea id="doc-editor"
+                          class="textarea textarea-bordered w-full min-h-[300px] font-mono text-sm rounded-xl leading-relaxed"
+                          rows="15">{{ draft or '' }}</textarea>
+                <div class="flex gap-2 mt-3">
+                    <button class="btn btn-sm btn-primary rounded-full gap-1.5"
+                            hx-put="/api/cases/{{ case_id }}/documents/{{ active_doc_id }}"
+                            hx-vals='js:{content: document.getElementById("doc-editor").value, status: "draft"}'
+                            hx-target="#documents-panel"
+                            hx-swap="innerHTML"
+                            @click="editing = false">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        Save
+                    </button>
+                    <button class="btn btn-sm btn-ghost rounded-full" @click="editing = false">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="tab === 'preview'" x-cloak>
+            <div class="notice-preview p-6 bg-white border border-slate-200 rounded-xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap font-serif">
+                {{ draft or 'No document to preview.' }}
+            </div>
+            {% if draft and active_doc_id %}
+            <div class="mt-3">
+                <button class="btn btn-sm btn-outline rounded-full gap-1.5"
+                        hx-post="/api/cases/{{ case_id }}/documents/{{ active_doc_id }}/preview"
+                        hx-target="#pdf-preview-container"
+                        hx-swap="innerHTML">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    </svg>
+                    Download PDF
+                </button>
+                <div id="pdf-preview-container" class="mt-3"></div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div x-show="tab === 'list'" x-cloak>
+            <p class="text-sm text-slate-500 mb-3">All generated documents for this case:</p>
+            <div class="space-y-2" id="documents-list">
+                {% if documents %}
+                    {% for doc in documents %}
+                    <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white hover:border-accent/30 transition-colors cursor-pointer"
+                         hx-get="/api/cases/{{ case_id }}/select-doc/{{ doc.id }}"
+                         hx-target="#documents-panel"
+                         hx-swap="innerHTML">
+                        <div>
+                            <p class="text-sm font-medium text-slate-700">{{ doc.title }}</p>
+                            <p class="text-xs text-slate-400">{{ doc.doc_type }} · {{ doc.status }}</p>
+                        </div>
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-sm text-slate-400 italic">No documents yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</aside>

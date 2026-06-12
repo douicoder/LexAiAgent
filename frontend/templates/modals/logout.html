@@ -1,0 +1,11 @@
+<dialog id="logout-modal" class="modal">
+    <div class="modal-box rounded-2xl">
+        <h3 class="font-semibold text-lg">Sign Out</h3>
+        <p class="text-sm text-slate-500 mt-2">Are you sure you want to sign out?</p>
+        <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost rounded-xl">Cancel</button></form>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-primary rounded-xl">Sign Out</a>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

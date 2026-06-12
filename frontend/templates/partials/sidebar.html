@@ -1,0 +1,66 @@
+<aside class="sidebar w-[280px] shrink-0 flex flex-col border-r border-slate-200 bg-white h-full">
+    <div class="p-4 border-b border-slate-100">
+        <a href="{{ url_for('dashboard.index') }}"
+           class="btn btn-primary w-full rounded-xl gap-2 shadow-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            New Legal Matter
+        </a>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-3 space-y-4" id="case-history">
+        {% if case_groups %}
+            {% for group_name, cases in case_groups.items() %}
+            <div>
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider px-2 mb-2">{{ group_name }}</p>
+                <ul class="space-y-1">
+                    {% for c in cases %}
+                    <li>
+                        <a href="{{ url_for('cases.view', case_id=c.case_id) }}"
+                           class="case-item block px-3 py-2.5 rounded-xl transition-colors
+                                  {% if active_case == c.case_id %}bg-blue-50 border border-blue-100{% else %}hover:bg-slate-50{% endif %}">
+                            <p class="text-sm font-medium text-primary truncate">
+                                {{ c.summary[:50] + '...' if c.summary and c.summary|length > 50 else (c.summary or c.case_type or 'Legal Matter') }}
+                            </p>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-xs text-slate-400">{{ c.status|replace('_', ' ')|title }}</span>
+                                {% if c.created_at %}
+                                <span class="text-xs text-slate-300">·</span>
+                                <span class="text-xs text-slate-400">{{ c.created_at[:10] }}</span>
+                                {% endif %}
+                            </div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-sm text-slate-400 px-2 py-4 text-center">No cases yet</p>
+        {% endif %}
+    </div>
+
+    <div class="p-4 border-t border-slate-100" x-data="{ open: false }">
+        <button @click="open = !open" class="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors">
+            <div class="avatar placeholder">
+                <div class="bg-accent text-white rounded-full w-9">
+                    <span class="text-sm">{{ (profile.full_name or 'U')[0]|upper }}</span>
+                </div>
+            </div>
+            <div class="flex-1 text-left min-w-0">
+                <p class="text-sm font-medium truncate">{{ profile.full_name or current_user_name }}</p>
+                <p class="text-xs text-slate-400 truncate">{{ profile.email or current_user_email }}</p>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             class="mt-2 p-3 bg-slate-50 rounded-xl text-sm space-y-2">
+            <p class="text-slate-500">{{ profile.case_count or 0 }} cases</p>
+            <a href="{{ url_for('settings.index') }}" class="block text-accent hover:underline">Settings</a>
+            <a href="{{ url_for('auth.logout') }}" class="block text-danger hover:underline">Sign out</a>
+        </div>
+    </div>
+</aside>

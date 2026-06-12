@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Create Account — LexAgent{% endblock %}
+{% block body %}
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-6">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="LexAgent" class="h-10 mx-auto mb-4">
+            <h1 class="text-2xl font-semibold text-white">Create your account</h1>
+            <p class="text-slate-400 mt-1">Start your AI-powered legal workspace</p>
+        </div>
+        <div class="card bg-white/95 backdrop-blur shadow-2xl rounded-2xl">
+            <div class="card-body p-8">
+                <form method="POST" class="space-y-4">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text font-medium">Full Name</span></label>
+                        <input type="text" name="full_name" required placeholder="Rahul Sharma"
+                               class="input input-bordered rounded-xl w-full" autofocus>
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text font-medium">Email</span></label>
+                        <input type="email" name="email" required placeholder="you@example.com"
+                               class="input input-bordered rounded-xl w-full">
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text font-medium">Password</span></label>
+                        <input type="password" name="password" required minlength="8" placeholder="Min 8 characters"
+                               class="input input-bordered rounded-xl w-full">
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text font-medium">Language</span></label>
+                        <select name="preferred_language" class="select select-bordered rounded-xl w-full">
+                            <option value="en">English</option>
+                            <option value="hi">Hindi</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-full rounded-xl mt-2">Create Account</button>
+                </form>
+                <p class="text-center text-sm text-slate-500 mt-6">
+                    Already have an account?
+                    <a href="{{ url_for('auth.login') }}" class="text-accent font-medium hover:underline">Sign in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
