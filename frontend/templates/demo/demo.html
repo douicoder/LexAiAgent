@@ -84,6 +84,10 @@
         <div class="text-4xl mb-3">&#128533;</div>
         <h3 class="text-lg font-semibold text-amber-800 mb-2">Insufficient Data to Proceed</h3>
         <p id="insufficient-message" class="text-amber-700 text-sm">Please provide a more detailed description of your legal problem so I can offer meaningful assistance.</p>
+        <div id="clarifying-questions-section" class="hidden mt-4 text-left">
+          <p class="text-sm font-semibold text-amber-800 mb-2">Please answer these questions:</p>
+          <div id="clarifying-questions-list" class="space-y-2"></div>
+        </div>
       </div>
     </div>
 
@@ -336,6 +340,21 @@
         document.getElementById("insufficient-section").classList.remove("hidden");
         document.getElementById("insufficient-message").textContent = data.ai_message || "Insufficient data to proceed.";
         document.getElementById("progress-section").classList.add("hidden");
+        // Show clarifying questions if any
+        const cqSection = document.getElementById("clarifying-questions-section");
+        const cqList = document.getElementById("clarifying-questions-list");
+        if (data.clarifying_questions && data.clarifying_questions.length > 0) {
+          cqList.innerHTML = "";
+          data.clarifying_questions.forEach(q => {
+            const div = document.createElement("div");
+            div.className = "bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800";
+            div.textContent = q.question;
+            cqList.appendChild(div);
+          });
+          cqSection.classList.remove("hidden");
+        } else {
+          cqSection.classList.add("hidden");
+        }
         return;
       }
 

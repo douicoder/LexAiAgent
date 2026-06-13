@@ -156,9 +156,17 @@ class AgentService:
         # ── Round 0: Vagueness check ─────────────────────────────────────
         vague_prompt = (
             f"Problem: {description}\n\n"
-            f"Is this legal problem description too vague to provide "
-            f"meaningful legal advice? If yes, generate up to 3 clarifying "
-            f"questions that would help understand the situation better.\n\n"
+            f"Determine if this description is too vague to provide meaningful legal advice.\n\n"
+            f"IMPORTANT: Return is_vague: false if the description ANY of these:\n"
+            f"- Mentions who the user is (landlord, tenant, buyer, employer, etc.)\n"
+            f"- Describes what happened or what the problem is\n"
+            f"- Mentions the other party involved\n"
+            f"- Has more than 20 words\n"
+            f"- Mentions evidence, documents, or specific events\n\n"
+            f"Return is_vague: true ONLY if the input is:\n"
+            f"- A single word or less than 10 words\n"
+            f"- Gibberish or test input\n"
+            f"- No clear legal problem described at all\n\n"
             f"Return ONLY valid JSON:\n"
             f'{{"is_vague": true/false, '
             f'"clarifying_questions": [{{"question": "your question here", '
