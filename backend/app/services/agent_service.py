@@ -25,7 +25,7 @@ from app.helpers.text_helper import TextHelper
 from app.interfaces.i_rag_service import IRagService
 
 LLM_MODEL = settings.LLM_MODEL
-FAST_MODEL = "microsoft/Phi-4"
+FAST_MODEL = "gpt-4o"
 
 AVAILABLE_LAW_DOCS = [
     "Model Tenancy Act, 2021",
