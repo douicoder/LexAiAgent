@@ -207,6 +207,11 @@
         <!-- Document Tabs -->
         <div id="doc-tabs" class="flex gap-1 border-b border-gray-200 mb-4 overflow-x-auto"></div>
 
+        <!-- Draft Disclaimer Banner -->
+        <div id="draft-banner" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 text-xs text-yellow-800">
+          <strong>&#9888; DRAFT</strong> &mdash; This is an AI-generated draft. Review with a legal professional before use.
+        </div>
+
         <!-- Document Content -->
         <div id="doc-panels" class="relative">
           <textarea id="doc-content" rows="16" class="w-full border border-gray-200 rounded-lg p-4 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gray-50"></textarea>
@@ -672,15 +677,6 @@
       }
     }
 
-    const DRAFT_HEADER =
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-      "⚠ THIS IS A COMPUTER-GENERATED DRAFT — FOR REFERENCE ONLY ⚠\n" +
-      "This document is an AI-generated draft based on your case description.\n" +
-      "It does NOT constitute legal advice. Please review with a qualified\n" +
-      "legal professional before use. Facts, legal citations, and amounts\n" +
-      "must be verified and customized to your specific situation.\n" +
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
-
     function renderDocuments(data) {
       const tabsContainer = document.getElementById("doc-tabs");
       const contentArea = document.getElementById("doc-content");
@@ -688,11 +684,11 @@
 
       const docs = [];
       if (data.legal_notice_draft) {
-        docs.push({ id: "legal-notice", title: "Legal Notice", content: DRAFT_HEADER + data.legal_notice_draft });
+        docs.push({ id: "legal-notice", title: "Legal Notice", content: data.legal_notice_draft });
       }
       if (data.other_documents && data.other_documents.length > 0) {
         data.other_documents.forEach((d, i) => {
-          docs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: DRAFT_HEADER + (d.content || "") });
+          docs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: d.content || "" });
         });
       }
 
@@ -700,8 +696,10 @@
         tabsContainer.innerHTML = '<p class="text-sm text-gray-400 italic py-2">No documents generated.</p>';
         contentArea.value = "No documents generated.";
         document.getElementById("download-all-btn").disabled = true;
+        document.getElementById("draft-banner").classList.add("hidden");
         return;
       }
+      document.getElementById("draft-banner").classList.remove("hidden");
 
       let activeTab = 0;
       docs.forEach((doc, i) => {
