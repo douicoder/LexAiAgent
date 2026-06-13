@@ -17,7 +17,14 @@ agent = AgentService(rag)
 @router.post("/analyze")
 async def demo_analyze(body: dict) -> AnalyzeResponseDTO:
     description = body.get("description", "")
-    return agent._mock_analysis(description)
+    request = AnalyzeRequestDTO(
+        case_id="",
+        description=description,
+        user_name="",
+        opponent_name="",
+        opponent_address="",
+    )
+    return await agent.analyze_case(request)
 
 
 @router.post("/update-evidence")

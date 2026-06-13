@@ -27,70 +27,17 @@ from app.interfaces.i_rag_service import IRagService
 LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = "gpt-4o"
 
-
-
 AVAILABLE_LAW_DOCS = [
     "Model Tenancy Act, 2021",
     "Transfer of Property Act, 1882",
     "Registration Act, 1908",
 ]
-LAW_DOCS_COVERAGE_TENANCY = (
-    "This case is within our knowledge base. The following law documents "
-    "have been ingested and were used for legal analysis: "
-    + ", ".join(AVAILABLE_LAW_DOCS) + ". "
-    "These cover tenancy, property transfer, and registration matters."
-)
-LAW_DOCS_COVERAGE_LIMITED = (
-    "[!] Limited law documents available in the database. "
-    "Currently ingested: " + ", ".join(AVAILABLE_LAW_DOCS) + ". "
-    "These primarily cover tenancy, property, and registration law. "
-    "Your case type may not be fully covered by the available legal corpus. "
-    "Consider consulting a qualified legal professional for case-specific advice."
-)
-
-# ── Document type definitions ───────────────────────────────────────────
-# Only ask for personal details NOT already in the case description.
-# The LLM receives the full case description and extracts subject, facts, and
-# relief details automatically — no need to make users re-enter them.
-DOCUMENT_TYPES = {
-    "demand_letter": {
-        "title": "Formal Demand Letter",
-        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
-        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
-    },
-    "legal_notice": {
-        "title": "Legal Notice",
-        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
-        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
-    },
-    "court_filing": {
-        "title": "Court Filing / Petition",
-        "required_info": ["petitioner_name", "petitioner_address", "respondent_name", "respondent_address", "court_name"],
-        "info_labels": {"petitioner_name": "Your full name (Petitioner)", "petitioner_address": "Your address", "respondent_name": "Respondent's full name", "respondent_address": "Respondent's address", "court_name": "Name of the court"},
-    },
-    "affidavit": {
-        "title": "Affidavit",
-        "required_info": ["deponent_name", "deponent_address"],
-        "info_labels": {"deponent_name": "Your full name (Deponent)", "deponent_address": "Your address"},
-    },
-    "complaint": {
-        "title": "Formal Complaint",
-        "required_info": ["complainant_name", "complainant_address", "respondent_name"],
-        "info_labels": {"complainant_name": "Your full name (Complainant)", "complainant_address": "Your address", "respondent_name": "Respondent's name"},
-    },
-    "agreement": {
-        "title": "Legal Agreement",
-        "required_info": ["party_a_name", "party_a_address", "party_b_name", "party_b_address"],
-        "info_labels": {"party_a_name": "First Party name", "party_a_address": "First Party address", "party_b_name": "Second Party name", "party_b_address": "Second Party address"},
-    },
-}
 
 
 def _extract_json(text: str) -> dict:
     text = text.strip()
     if not text:
         raise ValueError("Empty text, no JSON object found")
-
     for start in range(len(text)):
         if text[start] != "{":
             continue
@@ -115,7 +62,7 @@ def _extract_json(text: str) -> dict:
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    return json.loads(text[start:i+1])
+                    return json.loads(text[start : i + 1])
     raise ValueError("No valid JSON object found in text")
 
 
@@ -133,8 +80,10 @@ class AgentService:
         self.legal = LegalHelper()
         self.text = TextHelper()
 
-    async def _call_llm(self, model: str, messages: list, max_tokens: int, max_retries: int = 1) -> str:
-        timeout = httpx.Timeout(6.0, connect=4.0)
+    async def _call_llm(
+        self, model: str, messages: list, max_tokens: int, max_retries: int = 2
+    ) -> str:
+        timeout = httpx.Timeout(30.0, connect=10.0)
         for attempt in range(max_retries):
             try:
                 response = await self.client.chat.completions.create(
@@ -153,7 +102,7 @@ class AgentService:
 
     def _build_section_refs(self, sections: list[dict]) -> str:
         if not sections:
-            return ""
+            return "No specific law sections matched."
         lines = []
         for s in sections:
             act = s.get("act", "")
@@ -171,702 +120,14 @@ class AgentService:
             if title:
                 lines.append(f"   - {title}")
             if excerpt:
-                lines.append(f"   - Relevant excerpt: \"{excerpt[:150]}...\"")
+                lines.append(f'   - Relevant excerpt: "{excerpt[:200]}..."')
         return "\n".join(lines)
 
-    DOC_PLACEHOLDERS = {
-        "[Landlord's Name]": "the Landlord",
-        "[Landlord's Address]": "at their registered address",
-        "[Your Name]": "[Your Name]",
-        "[Your Address]": "[Your Address]",
-        "[Amount]": "the relevant amount",
-        "[Property Address]": "the subject property",
-        "[City Name]": "[City Name]",
-        "[Address]": "the relevant address",
-        "[Start Date]": "[Start Date]",
-        "[End Date]": "[End Date]",
-        "[Date]": "[Date]",
-        "[Phone Number]": "[Phone Number]",
-        "[Email Address]": "[Email Address]",
-        "[Company Name]": "the Employer",
-        "[Company Address]": "at their registered address",
-        "[Designation]": "[Designation]",
-        "[Product/Service]": "the Product/Service",
-        "[Recipient Name]": "the Recipient",
-        "[Unpaid Period]": "the relevant period",
-        "[Describe the issue briefly]": "[Describe the issue briefly]",
-        "[Describe defect/deficiency in detail]": "[Describe the defect in detail]",
-    }
-
-    def _extract_case_info(self, description: str) -> dict:
-        info = {}
-        desc_lower = description.lower()
-
-        # Try to extract monetary amount
-        m = re.search(r'(?:rs\.?\s*|₹\s*|rupees?\s+)?(\d[\d,]+)\s*(?:rupees?|rs\.?|₹)?', description, re.IGNORECASE)
-        if m:
-            raw = m.group(1).replace(",", "")
-            if raw.isdigit():
-                info["amount"] = raw
-
-        # Try to extract landlord name (word after "landlord" or "my landlord")
-        m = re.search(r'(?:my\s+)?landlord\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', description)
-        if m:
-            info["landlord_name"] = m.group(1)
-        else:
-            m = re.search(r'(?:my\s+)?landlord[,\s]+([A-Z][a-z]+)', description)
-            if m:
-                info["landlord_name"] = m.group(1)
-
-        # Try to extract company/employer name
-        m = re.search(r'(?:my\s+)?(?:employer|company)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', description)
-        if m:
-            info["company_name"] = m.group(1)
-            info["employer_name"] = m.group(1)
-
-        # Try to extract tenant name
-        m = re.search(r'(?:my\s+name\s+is\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', description)
-        if m:
-            info["your_name"] = m.group(1)
-
-        return info
-
-    def _render_doc_template(self, content: str, info: dict) -> str:
-        result = content
-        for placeholder, default in self.DOC_PLACEHOLDERS.items():
-            key = placeholder.strip("[]").lower().replace("'", "").replace(" ", "_").replace("/", "_or_")
-            if key == "your_name":
-                value = info.get("your_name", info.get("tenant_name", default))
-            elif key == "landlords_name":
-                value = info.get("landlord_name", default)
-            elif key == "amount":
-                value = info.get("amount", default)
-            elif key == "company_name":
-                value = info.get("company_name", default)
-            elif key == "product_or_service":
-                value = info.get("product", default)
-            else:
-                value = info.get(key, default)
-            result = result.replace(placeholder, value)
-        return result
-
-    def _build_evidence_section(self, ev_available: list[str], ev_missing: list[str], numbered: bool = False) -> str:
-        lines = []
-        if ev_available:
-            lines.append("EVIDENCE IN POSSESSION:")
-            for i, item in enumerate(ev_available):
-                prefix = f"{i+1}. " if numbered else "- "
-                lines.append(f"{prefix}{item}")
-        if ev_missing:
-            lines.append("\nEVIDENCE TO BE OBTAINED:")
-            for i, item in enumerate(ev_missing):
-                prefix = f"{len(ev_available)+i+1}. " if numbered else "- "
-                lines.append(f"{prefix}{item}")
-        if not ev_available and not ev_missing:
-            lines.append("[Evidence list to be compiled]")
-        return "\n".join(lines)
-
-    def _generate_documents(self, description: str, sections: list[dict], section_refs: str,
-                            ev_available: list[str], ev_missing: list[str],
-                            evidence_missing_items: list[str], now_str: str,
-                            user_role: str = "tenant") -> tuple[str, list[DocumentDTO]]:
-        has_evidence = len(ev_available) > 0
-
-        if has_evidence:
-            evidence_summary = (
-                f"The {'complainant' if user_role == 'tenant' else 'applicant'} has gathered the following evidence to support this claim:\n"
-                + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(ev_available))
-            )
-            if ev_missing:
-                evidence_summary += (
-                    f"\n\nThe {'complainant' if user_role == 'tenant' else 'applicant'} is in the process of obtaining the following additional evidence:\n"
-                    + "\n".join(f"  {len(ev_available)+i+1}. {item}" for i, item in enumerate(ev_missing))
-                )
-            strength_note = (
-                "The presence of this documented evidence significantly strengthens the "
-                f"{'complainant' if user_role == 'tenant' else 'applicant'}'s position "
-                "and establishes a clear factual basis for the claims made herein."
-            )
-        else:
-            evidence_summary = (
-                "The following evidence will be collected and submitted in support of this claim:\n"
-                + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(evidence_missing_items))
-            )
-            strength_note = (
-                f"The {'complainant' if user_role == 'tenant' else 'applicant'} acknowledges that gathering the above evidence is critical to "
-                "strengthening the case before proceeding with formal legal action."
-            )
-
-        if user_role == "landlord":
-            notice_content = (
-                f"LEGAL NOTICE FOR RECOVERY OF DAMAGES FROM TENANT\n\n"
-                f"TO:\n[Tenant's Name]\n[Tenant's Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Legal notice demanding compensation for intentional property damage\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I, [Your Name], am the owner of the property located at [Property Address] "
-                f"which was let out to you under a rental agreement dated [Start Date].\n\n"
-                f"It has come to my attention that you have intentionally caused damage to the said property, "
-                f"including but not limited to: broken fixtures, damaged walls, and destruction of landlord-provided "
-                f"appliances and fittings. This conduct constitutes a clear breach of the rental agreement and the "
-                f"obligations under the Transfer of Property Act, 1882.\n\n"
-                f"LEGAL GROUNDS (from database search):\n"
-                f"{section_refs}\n\n"
-                f"{evidence_summary}\n\n"
-                f"{strength_note}\n\n"
-                f"YOU ARE HEREBY CALLED UPON to pay compensation of Rs. [Amount] for the damages caused "
-                f"within 15 days of receipt of this notice, failing which legal proceedings will be initiated "
-                f"without further notice.\n\n"
-                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-            )
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Damages", content=(
-                    f"FORMAL DEMAND LETTER FOR PROPERTY DAMAGE\n"
-                    f"==============================\n\n"
-                    f"TO:\n[Tenant's Name]\n[Tenant's Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Formal demand for compensation for intentional property damage\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"This is a formal demand for the immediate compensation for damages caused to my property "
-                    f"at [Property Address] during your tenancy.\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"Your intentional damage to the property is contrary to the following laws:\n"
-                    f"{section_refs}\n\n"
-                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
-                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which establishes "
-                    f"the tenant's obligation to maintain the property. The {sections[1]['act']} Section {sections[1]['section_number']} "
-                    f"({round(sections[1]['score']*100)}% relevance) provides for compensation for breach of contract.\n\n"
-                    f"{evidence_summary}\n\n"
-                    f"{strength_note}\n\n"
-                    f"DEMAND:\n"
-                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
-                    f"Failure to comply will result in immediate legal proceedings to recover the damages plus "
-                    f"interest and costs.\n\n"
-                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-                )),
-                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint Against Tenant for Property Damage", content=(
-                    f"COMPLAINT BEFORE THE RENT CONTROLLER / CIVIL COURT\n"
-                    f"==============================\n\n"
-                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
-                    f"COMPLAINT NO: _____\n\n"
-                    f"IN THE MATTER OF:\n[Your Name] … Complainant (Landlord)\nVS\n[Tenant's Name] … Respondent (Tenant)\n\n"
-                    f"MOST RESPECTFULLY SHOWETH:\n\n"
-                    f"1. The complainant is the owner of the property located at [Property Address].\n"
-                    f"2. The respondent was a tenant at the said property from [Start Date] to [End Date].\n"
-                    f"3. The respondent, during the course of tenancy, intentionally damaged the property, "
-                    f"causing destruction to fixtures, fittings, and landlord-provided appliances.\n"
-                    f"4. The damage was not caused by normal wear and tear but by deliberate and intentional acts.\n"
-                    f"5. The complainant has evidence including photographs, video recordings, and camera footage "
-                    f"showing the respondent causing the damage.\n"
-                    f"6. The respondent has refused to compensate for the damages despite repeated demands.\n\n"
-                    f"LEGAL PROVISIONS INVOKED:\n"
-                    f"This complaint is grounded in the following legal provisions:\n"
-                    f"{section_refs}\n\n"
-                    f"The respondent's actions constitute:\n"
-                    f"a) Breach of rental agreement under {sections[0]['act']} Section {sections[0]['section_number']} "
-                    f"({sections[0]['section_title']}) — the tenant failed to maintain the property.\n"
-                    f"b) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
-                    f"({sections[1]['section_title']}) — the respondent is liable to pay compensation.\n"
-                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the tenant's "
-                    f"obligation to restore the premises in good condition.\n\n"
-                    f"EVIDENCE RELIED UPON:\n"
-                    f"{evidence_summary}\n\n"
-                    f"{strength_note}\n\n"
-                    f"PRAYER:\n"
-                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
-                    f"a) Direct the respondent to pay compensation of Rs. [Amount] for the damages caused to the property.\n"
-                    f"b) Award interest at 18% per annum from the date of damage.\n"
-                    f"c) Award costs of the proceedings.\n"
-                    f"d) Pass any other order deemed fit.\n\n"
-                    f"Complainant\n[Your Name]\n[Date]"
-                )),
-            ]
-        else:
-            notice_content = (
-                f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
-                f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I, [Your Name], was a tenant at your property located at [Property Address] "
-                f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
-                f"LEGAL GROUNDS (from database search):\n"
-                f"{section_refs}\n\n"
-                f"{evidence_summary}\n\n"
-                f"{strength_note}\n\n"
-                f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
-                f"within 15 days, failing which legal proceedings will be initiated.\n\n"
-                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-            )
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
-                    f"FORMAL DEMAND LETTER\n"
-                    f"==============================\n\n"
-                    f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Formal demand for refund of security deposit\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"This is a formal demand for the immediate refund of my security deposit. "
-                    f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
-                    f"{section_refs}\n\n"
-                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
-                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
-                    f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
-                    f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
-                    f"{evidence_summary}\n\n"
-                    f"{strength_note}\n\n"
-                    f"DEMAND:\n"
-                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
-                    f"Failure to comply will result in immediate legal proceedings.\n\n"
-                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-                )),
-                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
-                    f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
-                    f"==============================\n\n"
-                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
-                    f"COMPLAINT NO: _____\n\n"
-                    f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
-                    f"MOST RESPECTFULLY SHOWETH:\n\n"
-                    f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
-                    f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
-                    f"3. The complainant vacated the premises on [Date] after proper notice.\n"
-                    f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
-                    f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
-                    f"LEGAL PROVISIONS INVOKED:\n"
-                    f"This complaint is grounded in the following legal provisions identified through database search:\n"
-                    f"{section_refs}\n\n"
-                    f"The respondent's actions constitute:\n"
-                    f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
-                    f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
-                    f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
-                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
-                    f"law provision governing security deposit refunds.\n"
-                    f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
-                    f"EVIDENCE RELIED UPON:\n"
-                    f"{evidence_summary}\n\n"
-                    f"{strength_note}\n\n"
-                    f"PRAYER:\n"
-                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
-                    f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
-                    f"b) Award costs of the proceedings.\n"
-                    f"c) Pass any other order deemed fit.\n\n"
-                    f"Complainant\n[Your Name]\n[Date]"
-                )),
-            ]
-
-        return notice_content, other_docs
-
-    def _generate_action_plan(self, description: str, ev_available: list[str], ev_missing: list[str],
-                              all_items: list[str], user_role: str = "tenant") -> tuple[list[ActionStep], list[str]]:
-        desc_lower = description.lower()
-        steps = []
-        num = 1
-
-        if user_role == "landlord":
-            # Landlord-specific evidence collection prompts
-            ev_prompts = {
-                "Copy of the signed lease/rental agreement": "Locate the signed rental agreement showing tenant obligations",
-                "Photographs or video of property damage (before and after)": "Compile dated photographs showing property condition before and after the damage",
-                "Camera footage showing tenant causing damage": "Export and preserve camera/surveillance footage showing the tenant causing damage",
-                "Written repair estimates or invoices for damage修复": "Obtain written repair estimates from contractors for all damaged items",
-                "Written communication with tenant about the damage": "Gather all emails, messages, or letters exchanged with the tenant about the property damage",
-                "Move-in condition report or photographs": "Retrieve the move-in inspection report or initial photographs showing property condition",
-                "Witness statements from neighbours or building staff": "Speak to neighbours or building staff who can testify to the tenant's conduct",
-            }
-
-            for item in ev_missing:
-                prompt = ev_prompts.get(item, f"Collect the following: {item}")
-                steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
-                num += 1
-
-            if ev_available:
-                have_list = "; ".join(ev_available[:3])
-                suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
-                steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels for court submission.", action_type="info_gathering", action_config={}, status="pending"))
-                num += 1
-
-            has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
-            if has_dates:
-                steps.append(ActionStep(number=num, text="Create a written timeline of damage incidents using the dates you mentioned — include each act of damage and communication with the tenant", action_type="info_gathering", action_config={}, status="pending"))
-            else:
-                steps.append(ActionStep(number=num, text="Create a detailed written timeline of all damage incidents — include dates, descriptions, and each communication with the tenant", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="Send a formal demand letter to the tenant via registered post and email requesting compensation for damages within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter for Damages"}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about jurisdiction, interest on damages, and recovery proceedings", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of damages with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Complaint Against Tenant"}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete camera footage, emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            recommended = [
-                f"Send a formal demand letter to the tenant via registered post AD and email (keep proof of delivery)",
-                f"Collect and organize: {', '.join(all_items[:4])}",
-                "Consult a property lawyer — ask about: jurisdiction for filing, eligibility for interest, tenant's liability for intentional damage",
-                "File a complaint with the Rent Controller or civil court if the tenant is unresponsive after 15 days",
-                "Preserve all evidence — especially camera footage, do not delete any recordings",
-            ]
-        else:
-            # Tenant-specific evidence collection prompts
-            ev_prompts = {
-                "Rental agreement / lease contract": "Locate your rental agreement or request a copy from the landlord",
-                "Deposit payment receipt or bank transfer record": "Obtain bank statements showing the security deposit transaction",
-                "Written communication with landlord about the deposit": "Gather all emails, messages, or letters exchanged with the landlord about the deposit",
-                "Photographs/video of apartment condition at move-in and move-out": "Collect dated photographs or video of the property condition at move-in and move-out",
-                "Any repair bills or damage estimates the landlord claims": "Request written repair estimates or bills for any damages the landlord alleges",
-                "Move-out inspection report (if any)": "Obtain the move-out inspection report from the landlord or building manager",
-                "Witness statements from neighbours or building staff": "Speak to neighbours or building staff willing to provide written statements about the property condition",
-            }
-
-            for item in ev_missing:
-                prompt = ev_prompts.get(item, f"Collect the following: {item}")
-                steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
-                num += 1
-
-            if ev_available:
-                have_list = "; ".join(ev_available[:3])
-                suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
-                steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels.", action_type="info_gathering", action_config={}, status="pending"))
-                num += 1
-
-            has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
-            if has_dates:
-                steps.append(ActionStep(number=num, text="Create a written timeline of events using the dates you mentioned — include move-in, vacate, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
-            else:
-                steps.append(ActionStep(number=num, text="Create a detailed written timeline of all events — include move-in date, vacate date, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="Send a formal demand letter to the landlord via registered post and email requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about limitation period, interest on delayed deposit, and jurisdiction for filing a recovery suit", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of money with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"))
-            num += 1
-
-            steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
-            num += 1
-
-            recommended = [
-                f"Send a formal demand letter to the landlord via registered post AD and email (keep proof of delivery)",
-                f"Collect and organize: {', '.join(all_items[:4])}",
-                "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
-                "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
-                "Preserve all evidence — do not delete emails, messages, or call recordings",
-            ]
-
-        return steps, recommended
-
-    def _mock_analysis(self, description: str, evidence_available_override: list[str] | None = None, evidence_missing_override: list[str] | None = None) -> AnalyzeResponseDTO:
-        desc_lower = description.lower().strip()
-        now_str = datetime.now(timezone.utc).strftime('%d %B %Y')
-
-        # ── Nonsense / gibberish detection ─────────────────────────────
-        nonsense_patterns = ["sigma", "alpha", "rizz", "gyatt", "skibidi", "lol", "xd", "asdf", "qwerty", "test", "123"]
-        word_count = len(desc_lower.split())
-        if word_count < 3 or any(p in desc_lower for p in nonsense_patterns):
-            return AnalyzeResponseDTO(
-                case_type="other",
-                severity="low",
-                legal_domain="Other",
-                relevant_sections=[],
-                legal_notice_draft="",
-                summary="",
-                next_steps=[],
-                reasoning_trace="[mock] Nonsense or insufficient input detected",
-                clarifying_questions=[],
-                action_buttons=[],
-                ai_message="I'm unable to process this input. Please describe your legal problem in detail so I can provide meaningful assistance.",
-                case_readiness_score=0,
-                evidence_available=[],
-                evidence_missing=[],
-                risk_level="low",
-                recommended_actions=[],
-                is_sufficient=False,
-                law_docs_available=AVAILABLE_LAW_DOCS,
-                law_docs_coverage="",
-            )
-
-        section_refs = ""
-        evidence_suggestions = []
-
-        # ── Classify case type ──────────────────────────────────────────
-        is_tenancy = any(kw in desc_lower for kw in ["landlord", "tenant", "deposit", "rent", "evict", "lease", "thrown out", "kicked out", "locked out", "changed the lock", "put my stuff out", "illegal eviction"])
-        is_consumer = any(kw in desc_lower for kw in ["consumer", "product", "defective", "service", "laptop", "refund", "warranty"])
-        is_employment = any(kw in desc_lower for kw in ["salary", "employer", "wage", "termination", "fired", "employment"])
-
-        # ── Detect user role: landlord or tenant ────────────────────────
-        is_landlord = any(kw in desc_lower for kw in [
-            "i am a landlord", "i'm a landlord", "my tenant", "the tenant",
-            "tenant is", "tenant keeps", "tenant refuses", "tenant damaged",
-            "tenant broke", "tenant breaking", "as a landlord", "i own the property",
-            "my property", "i rented out", "i leased",
-        ])
-        is_tenant = any(kw in desc_lower for kw in [
-            "my landlord", "the landlord", "landlord is", "landlord refuses",
-            "landlord keeps", "landlord won't", "as a tenant", "i am a tenant",
-            "i'm a tenant", "my deposit", "security deposit", "evicted me",
-            "kicked me out", "locked me out",
-        ])
-        # If both or neither detected, default based on context
-        if is_landlord and not is_tenant:
-            user_role = "landlord"
-        elif is_tenant and not is_landlord:
-            user_role = "tenant"
-        elif "landlord" in desc_lower and "tenant" in desc_lower:
-            # Both mentioned — check who is the subject ("I am" vs "my tenant/landlord")
-            if re.search(r'\bi\s+(?:am|\'m)\s+a?\s*landlord\b', desc_lower):
-                user_role = "landlord"
-            elif re.search(r'\bi\s+(?:am|\'m)\s+a?\s*tenant\b', desc_lower):
-                user_role = "tenant"
-            elif re.search(r'\bmy\s+tenant\b', desc_lower):
-                user_role = "landlord"
-            elif re.search(r'\bmy\s+landlord\b', desc_lower):
-                user_role = "tenant"
-            else:
-                user_role = "tenant"  # fallback
-        else:
-            user_role = "tenant"  # default
-
-        if is_tenancy:
-            case_type = "tenancy_dispute"
-            legal_domain = "Landlord-Tenant"
-            severity = "medium"
-            risk = "medium"
-            coverage = LAW_DOCS_COVERAGE_TENANCY
-
-            if user_role == "landlord":
-                summary = "This appears to be a tenancy-related dispute where you (the landlord) are seeking to recover damages caused by your tenant. Based on your description, there are legal grounds to pursue a claim for property damage."
-                ai_message = "I've analyzed your situation as a landlord. Your tenant's intentional property damage gives you strong legal grounds. Here's what you'll need to build a solid case for recovery."
-                sections = [
-                    {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "The lessee is bound to keep the premises in as good a condition as they were in at the time of the lease, reasonable wear and tear excepted."},
-                    {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby."},
-                    {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Tenant's obligation to maintain property", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The tenant shall not cause or permit any damage to the premises and shall, at the time of vacation, restore the premises to the condition in which they were at the commencement of the tenancy."},
-                ]
-                evidence_missing_items = [
-                    "Copy of the signed lease/rental agreement",
-                    "Photographs or video of property damage (before and after)",
-                    "Camera footage showing tenant causing damage",
-                    "Written repair estimates or invoices for damage修复",
-                    "Written communication with tenant about the damage",
-                    "Move-in condition report or photographs",
-                    "Witness statements from neighbours or building staff",
-                ]
-                evidence_suggestions = [
-                    "Get a professional damage assessment report from a contractor",
-                    "Obtain notarized affidavits from neighbours who witnessed the damage",
-                    "File a police complaint (FIR/NCR) for intentional property destruction",
-                    "Get a legal consultation from a property lawyer",
-                    "Collect rent payment records showing tenant's tenancy period",
-                    "Document all previous communications with the tenant about property care",
-                ]
-            else:
-                summary = "This appears to be a tenancy-related dispute. Based on your description, there may be legal grounds to pursue a claim."
-                ai_message = "I've analyzed your tenancy issue. Let me outline the legal landscape and what you'll need to build a strong case."
-                sections = [
-                    {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
-                    {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby, which naturally arose in the usual course of business from such breach."},
-                    {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Security deposit and its refund", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The landlord shall refund the security deposit to the tenant at the time of vacating the premises after deducting any amount due, if any, and shall provide a detailed statement of deductions."},
-                ]
-                evidence_missing_items = [
-                    "Rental agreement / lease contract",
-                    "Deposit payment receipt or bank transfer record",
-                    "Written communication with landlord about the deposit",
-                    "Photographs/video of apartment condition at move-in and move-out",
-                    "Any repair bills or damage estimates the landlord claims",
-                    "Move-out inspection report (if any)",
-                    "Witness statements from neighbours or building staff",
-                ]
-                evidence_suggestions = [
-                    "Obtain a written estimate from a contractor for any alleged damages",
-                    "Get a notarized affidavit from a neighbour confirming the property condition",
-                    "Request a formal move-out inspection report from the landlord in writing",
-                    "File a police complaint (Non-Cognizable Report) for harassment if applicable",
-                    "Get a legal consultation from a property lawyer and obtain a written opinion",
-                    "Collect bank statements showing the deposit payment transaction",
-                ]
-
-            section_refs = self._build_section_refs(sections)
-            steps = []
-            recommended = []
-
-        else:
-            # Consumer, employment, and unrecognized case types — not in knowledge base
-            domain_map = {"consumer_dispute": "Consumer Protection", "employment_dispute": "Employment", "other": "Civil"}
-            type_map = {"consumer_dispute": "consumer", "employment_dispute": "employment", "other": "this type of"}
-            case_type = "consumer_dispute" if is_consumer else ("employment_dispute" if is_employment else "other")
-            return AnalyzeResponseDTO(
-                case_type=case_type,
-                severity="low",
-                legal_domain=domain_map.get(case_type, "Civil"),
-                relevant_sections=[],
-                legal_notice_draft="",
-                other_documents=[],
-                summary="",
-                next_steps=[],
-                reasoning_trace="[mock] Case type not in knowledge base",
-                clarifying_questions=[],
-                action_buttons=[],
-                ai_message=f"Sorry, the laws for {type_map.get(case_type, 'this')} cases are currently not in our database. I can only assist with tenancy-related matters (landlord-tenant disputes, security deposit recovery, eviction, etc.) using the ingested laws.",
-                case_readiness_score=0,
-                evidence_available=[],
-                evidence_missing=[],
-                evidence_suggestions=[],
-                risk_level="low",
-                recommended_actions=[],
-                is_sufficient=False,
-                law_docs_available=AVAILABLE_LAW_DOCS,
-                law_docs_coverage=LAW_DOCS_COVERAGE_LIMITED,
-            )
-
-        # ── Extract case info from description for document filling ────
-        info = self._extract_case_info(description)
-
-        # ── Calculate readiness score (brutally honest) ────────────────
-        # No free points. Score reflects how ready the case actually is.
-        #
-        # Description Quality (0-30):
-        #   - Has specific monetary amount: +5
-        #   - Has specific dates or timeframes: +5
-        #   - Has names of parties involved: +5
-        #   - Describes specific events/actions taken: +5
-        #   - Word count > 25 (not just a sentence): +5
-        #   - Word count > 50 (genuinely detailed): +5
-        #
-        # Evidence Confirmed (0-50):
-        #   Only counts when user explicitly confirms having evidence.
-        #   Proportion of confirmed items * 50.
-        #
-        # Legal Strength (0-20):
-        #   - Clear remedy sought (refund, repair, reinstatement): +10
-        #   - Adverse action documented (eviction notice, refusal, damage): +10
-
-        detail_score = 0
-
-        # Specific monetary amount
-        if re.search(r'(?:rs\.?\s*|₹\s*|rupees?\s+)\d+', desc_lower):
-            detail_score += 5
-
-        # Dates or timeframes
-        date_keywords = ["january", "february", "march", "april", "may", "june",
-                         "july", "august", "september", "october", "november", "december",
-                         "2023", "2024", "2025", "2026", "2027",
-                         "months ago", "weeks ago", "days ago", "year ago", "years ago",
-                         "last month", "last week", "last year", "ago"]
-        if any(kw in desc_lower for kw in date_keywords):
-            detail_score += 5
-
-        # Names of parties (capitalized words after "landlord", "tenant", "name is", etc.)
-        name_patterns = [
-            r'(?:my\s+)?landlord\s+[A-Z]',
-            r'(?:my\s+)?name\s+is\s+[A-Z]',
-            r'(?:landlord|tenant|owner|respondent)\s+[A-Z]',
-        ]
-        if any(re.search(p, description) for p in name_patterns):
-            detail_score += 5
-
-        # Specific events/actions described
-        action_keywords = ["refusing", "refused", "served", "notified", "filed", "sent",
-                           "demanded", "requested", "reported", "complained", "emailed",
-                           "called", "visited", "inspected", "terminated", "evicted",
-                           "damaged", "broken", "leaked", "flooded", "mold"]
-        if sum(1 for kw in action_keywords if kw in desc_lower) >= 2:
-            detail_score += 5
-
-        # Word count thresholds
-        if word_count > 25:
-            detail_score += 5
-        if word_count > 50:
-            detail_score += 5
-
-        detail_score = min(30, detail_score)
-
-        # Evidence score: only when user confirms what they actually have
-        if evidence_available_override is not None:
-            ev_available = evidence_available_override
-            if evidence_missing_override is not None:
-                ev_missing = evidence_missing_override
-            else:
-                ev_missing = [e for e in evidence_missing_items if e not in ev_available]
-            total_ev = len(ev_available) + len(ev_missing)
-            ev_confirmed_pct = len(ev_available) / max(total_ev, 1)
-            evidence_score = int(ev_confirmed_pct * 50)
-        else:
-            ev_available = []
-            ev_missing = evidence_missing_items
-            evidence_score = 0
-
-        # Legal strength: clear grounds for a claim
-        legal_score = 0
-        remedy_keywords = ["refund", "return", "repair", "compensate", "reinstate",
-                           "evict", "eviction", "terminate", "restore", "recover"]
-        if any(kw in desc_lower for kw in remedy_keywords):
-            legal_score += 10
-        adverse_keywords = ["refusing", "refused", "illegally", "without notice",
-                            "without consent", "damaged", "harass", "harassment",
-                            "threatened", "locked out", "changed the lock"]
-        if any(kw in desc_lower for kw in adverse_keywords):
-            legal_score += 10
-
-        readiness = min(100, detail_score + evidence_score + legal_score)
-
-        # ── Generate documents with evidence context ──
-        notice_content, other_docs = self._generate_documents(
-            description, sections, section_refs, ev_available, ev_missing,
-            evidence_missing_items, now_str, user_role=user_role
-        )
-
-        # ── Dynamically generate action plan based on description + evidence ──
-        steps, recommended = self._generate_action_plan(description, ev_available, ev_missing, evidence_missing_items, user_role=user_role)
-
-        # Render ready-to-use documents — fill placeholders
-        notice = self._render_doc_template(notice_content, info)
-        updated_other = []
-        for doc in other_docs:
-            rendered = self._render_doc_template(doc.content, info)
-            updated_other.append(DocumentDTO(
-                id=doc.id, case_id=doc.case_id, doc_type=doc.doc_type,
-                title=doc.title, content=rendered,
-                status=doc.status, created_at=doc.created_at, updated_at=doc.updated_at,
-            ))
-
-        return AnalyzeResponseDTO(
-            case_type=case_type,
-            severity=severity,
-            legal_domain=legal_domain,
-            relevant_sections=sections,
-            legal_notice_draft=notice,
-            other_documents=updated_other,
-            summary=summary,
-            next_steps=steps,
-            reasoning_trace="[mock_analysis] API unavailable — using fallback analysis",
-            clarifying_questions=[],
-            action_buttons=[ActionButton(label="Download Documents", message="Download all generated documents", style="primary")],
-            ai_message=ai_message,
-            case_readiness_score=readiness,
-            evidence_available=ev_available,
-            evidence_missing=ev_missing,
-            evidence_suggestions=evidence_suggestions,
-            risk_level=risk,
-            recommended_actions=recommended,
-            is_sufficient=True,
-            law_docs_available=AVAILABLE_LAW_DOCS,
-            law_docs_coverage=coverage,
-        )
+    async def analyze_case(self, request: AnalyzeRequestDTO) -> AnalyzeResponseDTO:
+        description = request.description
+        if request.language == "hi":
+            description = await self.text.translate_to_english(description)
+        return await self._run_llm_analysis(description)
 
     async def update_evidence(
         self,
@@ -874,27 +135,25 @@ class AgentService:
         evidence_available: list[str],
         evidence_missing: list[str],
     ) -> AnalyzeResponseDTO:
-        return self._mock_analysis(
-            description,
-            evidence_available_override=evidence_available,
-            evidence_missing_override=evidence_missing,
+        evidence_context = (
+            f"The user has confirmed they have the following evidence:\n"
+            + "\n".join(f"- {e}" for e in evidence_available)
+            + "\n\nThe following evidence is still missing:\n"
+            + "\n".join(f"- {e}" for e in evidence_missing)
         )
+        full_prompt = (
+            f"Original case description:\n{description}\n\n"
+            f"Updated evidence status:\n{evidence_context}\n\n"
+            f"Regenerate the full legal analysis with updated documents reflecting the confirmed evidence. "
+            f"Strengthen the legal documents by referencing the confirmed evidence. "
+            f"Recalculate the case_readiness_score based on the evidence now available."
+        )
+        return await self._run_llm_analysis(full_prompt)
 
-    async def analyze_case(self, request: AnalyzeRequestDTO) -> AnalyzeResponseDTO:
-        description = request.description
-        if request.language == "hi":
-            description = await self.text.translate_to_english(description)
-
+    async def _run_llm_analysis(self, description: str) -> AnalyzeResponseDTO:
         reasoning_trace = []
 
-        try:
-            # ── Round 0: Check for vagueness ───────────────────────────────────
-            return await self._run_llm_analysis(description, reasoning_trace)
-        except (RateLimitError, APITimeoutError, APIConnectionError):
-            reasoning_trace.append("[mock_analysis] API unavailable — using fallback analysis")
-            return self._mock_analysis(description)
-
-    async def _run_llm_analysis(self, description: str, reasoning_trace: list) -> AnalyzeResponseDTO:
+        # ── Round 0: Vagueness check ─────────────────────────────────────
         vague_prompt = (
             f"Problem: {description}\n\n"
             f"Is this legal problem description too vague to provide "
@@ -906,140 +165,251 @@ class AgentService:
             f'"key": "short_key_for_this_question"}}]}}'
             f"\nIf not vague, set clarifying_questions to an empty array."
         )
-        vague_text = await self._call_llm(
-            model=FAST_MODEL,
-            messages=[
-                {"role": "system", "content": self.legal.system_prompt()},
-                {"role": "user", "content": vague_prompt},
-            ],
-            max_tokens=1000,
-        )
         try:
+            vague_text = await self._call_llm(
+                model=FAST_MODEL,
+                messages=[
+                    {"role": "system", "content": self.legal.system_prompt()},
+                    {"role": "user", "content": vague_prompt},
+                ],
+                max_tokens=1000,
+            )
             vague_result = _extract_json(vague_text)
-        except ValueError:
+        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError):
             vague_result = {"is_vague": False, "clarifying_questions": []}
+
         is_vague = vague_result.get("is_vague", False)
         vague_questions = vague_result.get("clarifying_questions", [])
-        reasoning_trace.append(f"[check_vagueness] is_vague={is_vague} questions={len(vague_questions)}")
+        reasoning_trace.append(
+            f"[check_vagueness] is_vague={is_vague} questions={len(vague_questions)}"
+        )
 
-        # ── Round 1: Classify case ────────────────────────────────────────────
+        if is_vague and vague_questions:
+            return AnalyzeResponseDTO(
+                case_type="other",
+                severity="low",
+                legal_domain="Other",
+                relevant_sections=[],
+                legal_notice_draft="",
+                summary="",
+                next_steps=[],
+                reasoning_trace="\n".join(reasoning_trace),
+                clarifying_questions=[
+                    ClarifyingQuestion(question=q["question"], key=q["key"])
+                    for q in vague_questions
+                ],
+                action_buttons=[],
+                ai_message="I need a bit more information to help you properly. Please answer these questions.",
+                case_readiness_score=0,
+                evidence_available=[],
+                evidence_missing=[],
+                risk_level="low",
+                recommended_actions=[],
+                is_sufficient=False,
+                law_docs_available=AVAILABLE_LAW_DOCS,
+                law_docs_coverage="",
+            )
+
+        # ── Round 1: Classify case ────────────────────────────────────────
         classify_prompt = (
             f"Problem: {description}\n\n"
             f"Classify this legal problem into a JSON object:\n"
-            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|consumer_dispute|employment_dispute|other", '
+            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|consumer_dispute|employment_dispute|family_dispute|criminal|other", '
             f'"severity": "low|medium|high|urgent", '
             f'"legal_domain": "Landlord-Tenant|Consumer Protection|Employment|Property|Criminal|Family|Other", '
+            f'"user_role": "landlord|tenant|employer|employee|buyer|seller|complainant|respondent|other", '
             f'"reasoning": "brief reason"}}'
         )
+        try:
+            classify_text = await self._call_llm(
+                model=FAST_MODEL,
+                messages=[
+                    {"role": "system", "content": self.legal.system_prompt()},
+                    {"role": "user", "content": classify_prompt},
+                ],
+                max_tokens=1000,
+            )
+            classification = _extract_json(classify_text)
+        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError) as e:
+            reasoning_trace.append(f"[classify_case] LLM error: {e}")
+            classification = {
+                "case_type": "other",
+                "severity": "medium",
+                "legal_domain": "Other",
+                "user_role": "other",
+                "reasoning": "Classification failed",
+            }
 
-        classify_text = await self._call_llm(
-            model=FAST_MODEL,
-            messages=[
-                {"role": "system", "content": self.legal.system_prompt()},
-                {"role": "user", "content": classify_prompt},
-            ],
-            max_tokens=1000,
-        )
-        classification = _extract_json(classify_text)
         reasoning_trace.append(f"[classify_case] -> {classification}")
 
-        # ── Round 2: Search law ───────────────────────────────────────────────
+        # ── Round 2: Search law via RAG ───────────────────────────────────
         search_prompt = (
             f"Case: {classification.get('case_type')} ({classification.get('severity')}). "
+            f"Role: {classification.get('user_role', 'unknown')}. "
             f"{classification.get('reasoning', '')}\n\n"
             f"What specific search query should be used to find relevant Indian law sections?\n\n"
             f"Output a JSON object:\n"
             f'{{"query": "specific legal search terms"}}'
         )
+        try:
+            search_text = await self._call_llm(
+                model=FAST_MODEL,
+                messages=[
+                    {"role": "system", "content": self.legal.system_prompt()},
+                    {"role": "user", "content": classify_prompt},
+                    {"role": "assistant", "content": classify_text},
+                    {"role": "user", "content": search_prompt},
+                ],
+                max_tokens=1000,
+            )
+            search_args = _extract_json(search_text)
+            query = search_args.get("query", description)
+        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError):
+            query = description
 
-        search_text = await self._call_llm(
-            model=FAST_MODEL,
-            messages=[
-                {"role": "system", "content": self.legal.system_prompt()},
-                {"role": "user", "content": classify_prompt},
-                {"role": "assistant", "content": classify_text},
-                {"role": "user", "content": search_prompt},
-            ],
-            max_tokens=1000,
-        )
-        search_args = _extract_json(search_text)
-        query = search_args.get("query", description)
+        try:
+            law_sections = await self.rag.search(query=query, top_k=5)
+        except Exception as e:
+            reasoning_trace.append(f"[search_law] RAG error: {e}")
+            law_sections = []
 
-        law_sections = await self.rag.search(query=query, top_k=5)
         reasoning_trace.append(f"[search_law: '{query}'] -> {len(law_sections)} results")
 
-        # ── Round 3: Generate full analysis ───────────────────────────────────
+        # ── Round 3: Generate full analysis via LLM ───────────────────────
+        section_refs = self._build_section_refs(law_sections)
+        today = datetime.now(timezone.utc).strftime("%d %B %Y")
+
         steps_prompt = (
             f"Problem: {description}\n\n"
             f"Classification: {json.dumps(classification, indent=2)}\n\n"
-            f"Relevant laws:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
+            f"Relevant laws found in database:\n{section_refs}\n\n"
+            f"Raw law sections data:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
+            f"Today's date: {today}\n\n"
             f"Generate a complete legal analysis as JSON. Prefix with 'FINAL_JSON:' then the JSON. No markdown.\n\n"
+            f"IMPORTANT INSTRUCTIONS:\n"
+            f"- You are generating documents for the USER described above. Determine from the description who the user is (landlord, tenant, buyer, employee, etc.) and generate ALL documents from THEIR perspective.\n"
+            f"- Do NOT assume the user is always a tenant. Read the description carefully.\n"
+            f"- The legal_notice_draft, demand_letter, and complaint MUST be written FROM the user TO the opposing party.\n"
+            f"- All documents must reference the actual law sections found above.\n"
+            f"- The case_readiness_score must be BRUTALLY HONOR: 0-10 = vague one-liner, 15-30 = short with some detail, 30-50 = detailed with clear facts, 50-80 = detailed + confirmed evidence, 80-100 = fully documented with all evidence.\n"
+            f"- evidence_missing should list evidence the user STILL NEEDS to collect, specific to this case type and the user's role.\n"
+            f"- evidence_suggestions should list additional actions to strengthen the case.\n"
+            f"- next_steps should be a concrete action plan with numbered steps. Each step must have: number, text, action_type ('generate_document'|'info_gathering'|'wait'), and action_config ({{doc_type: '...', title: '...'}} if generate_document).\n\n"
             f"Keys:\n"
-            f'  "ai_message" — warm conversational message (2-3 sentences)\n'
+            f'  "ai_message" — warm conversational message (2-3 sentences) acknowledging the user\'s role and situation\n'
             f'  "summary" — case summary and recommended approach (2-3 sentences)\n'
-            f'  "steps" — array of {{number, text, action_type (generate_document|wait|info_gathering), action_config: {{doc_type, title}}}}\n'
-            f'  "legal_notice_draft" — plain text string (NOT a JSON object). A complete formal legal notice with TO, FROM, subject, body, legal grounds, demand clause, and signature. Use Indian legal format.\n'
-            f'  "case_readiness_score" — integer 0-100. BE BRUTALLY HONEST. A vague one-liner = 0-10. A short description with some detail = 15-30. A detailed description with clear facts = 30-50. Detailed + confirmed evidence = 50-80. Fully documented case with all evidence = 80-100. Do NOT inflate this score.\n'
-            f'  "evidence_available" — array of strings (evidence user likely has)\n'
-            f'  "evidence_missing" — array of strings (evidence user still needs)\n'
+            f'  "next_steps" — array of {{number: int, text: str, action_type: str, action_config: {{doc_type: str, title: str}}}}\n'
+            f'  "legal_notice_draft" — plain text. Complete formal legal notice. FROM the user TO the opposing party. Indian legal format.\n'
+            f'  "other_documents" — array of {{doc_type: str, title: str, content: str}} for additional documents (demand letter, complaint, etc.)\n'
+            f'  "case_readiness_score" — integer 0-100 (BRUTALLY HONEST)\n'
+            f'  "evidence_available" — array of strings (evidence user likely already has based on description)\n'
+            f'  "evidence_missing" — array of strings (evidence user still needs, specific to this case)\n'
+            f'  "evidence_suggestions" — array of strings (additional actions to strengthen the case)\n'
             f'  "risk_level" — "low"|"medium"|"high"\n'
             f'  "recommended_actions" — array of plain text action recommendations\n'
         )
 
         final_text = await self._call_llm(
-            model=FAST_MODEL,
+            model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": self.legal.system_prompt()},
                 {"role": "user", "content": steps_prompt},
             ],
-            max_tokens=8000,
+            max_tokens=12000,
         )
 
         marker = "FINAL_JSON:"
         idx = final_text.rfind(marker)
         if idx >= 0:
-            final_data = _extract_json(final_text[idx + len(marker):])
+            final_data = _extract_json(final_text[idx + len(marker) :])
         else:
             final_data = _extract_json(final_text)
 
-        steps_data = final_data.get("steps", [])
+        reasoning_trace.append(f"[llm_analysis] keys={list(final_data.keys())}")
+
+        # Parse steps
+        steps_data = final_data.get("next_steps", final_data.get("steps", []))
         action_steps = []
         for s in steps_data:
-            action_steps.append(ActionStep(
-                number=s.get("number", 1),
-                text=s.get("text", ""),
-                action_type=s.get("action_type", "info_gathering"),
-                action_config=s.get("action_config", {}),
-                status="pending",
-            ))
+            action_steps.append(
+                ActionStep(
+                    number=s.get("number", 1),
+                    text=s.get("text", ""),
+                    action_type=s.get("action_type", "info_gathering"),
+                    action_config=s.get("action_config", {}),
+                    status="pending",
+                )
+            )
 
+        # Parse other documents
+        other_docs_raw = final_data.get("other_documents", [])
+        other_documents = []
+        for doc in other_docs_raw:
+            other_documents.append(
+                DocumentDTO(
+                    id=_generate_doc_id(),
+                    case_id="",
+                    doc_type=doc.get("doc_type", "document"),
+                    title=doc.get("title", "Legal Document"),
+                    content=doc.get("content", ""),
+                    status="draft",
+                )
+            )
+
+        # Clarifying questions from both rounds
         clarifying_questions = [
             ClarifyingQuestion(question=q.get("question", ""), key=q.get("key", ""))
-            for q in (vague_questions + final_data.get("clarifying_questions", []))
-        ]
-
-        action_buttons_items = [
-            ActionButton(label=ab.get("label", ""), message=ab.get("message", ""), style=ab.get("style", "default"))
-            for ab in final_data.get("action_buttons", [])
+            for q in vague_questions
         ]
 
         return AnalyzeResponseDTO(
-            case_type=classification.get("case_type", "other"),
-            severity=classification.get("severity", "medium"),
-            legal_domain=classification.get("legal_domain", ""),
+            case_type=final_data.get("case_type", classification.get("case_type", "other")),
+            severity=final_data.get("severity", classification.get("severity", "medium")),
+            legal_domain=final_data.get("legal_domain", classification.get("legal_domain", "")),
             relevant_sections=law_sections,
             legal_notice_draft=final_data.get("legal_notice_draft", ""),
+            other_documents=other_documents,
             summary=final_data.get("summary", ""),
             next_steps=action_steps,
             reasoning_trace="\n".join(reasoning_trace),
             clarifying_questions=clarifying_questions,
-            action_buttons=action_buttons_items,
-            ai_message=final_data.get("ai_message", f"I've analyzed your case. Here's a step-by-step plan to help you resolve this matter."),
+            action_buttons=[
+                ActionButton(
+                    label="Download Documents",
+                    message="Download all generated documents",
+                    style="primary",
+                )
+            ],
+            ai_message=final_data.get(
+                "ai_message",
+                "I've analyzed your case. Here's a step-by-step plan to help you resolve this matter.",
+            ),
             case_readiness_score=final_data.get("case_readiness_score", 0),
             evidence_available=final_data.get("evidence_available", []),
             evidence_missing=final_data.get("evidence_missing", []),
+            evidence_suggestions=final_data.get("evidence_suggestions", []),
             risk_level=final_data.get("risk_level", "medium"),
             recommended_actions=final_data.get("recommended_actions", []),
+            is_sufficient=True,
+            law_docs_available=AVAILABLE_LAW_DOCS,
+            law_docs_coverage=self._get_coverage(classification.get("case_type", "other")),
+        )
+
+    def _get_coverage(self, case_type: str) -> str:
+        tenancy_types = ["tenancy_dispute", "property_ownership", "property_registration"]
+        if case_type in tenancy_types:
+            return (
+                "This case is within our knowledge base. The following law documents "
+                "have been ingested and were used for legal analysis: "
+                + ", ".join(AVAILABLE_LAW_DOCS)
+                + ". These cover tenancy, property transfer, and registration matters."
+            )
+        return (
+            "[!] Limited law documents available in the database. "
+            "Currently ingested: "
+            + ", ".join(AVAILABLE_LAW_DOCS)
+            + ". Your case type may not be fully covered by the available legal corpus. "
+            "Consider consulting a qualified legal professional for case-specific advice."
         )
 
     async def execute_action(
@@ -1055,10 +425,7 @@ class AgentService:
 
         case = supabase_service.get_case_by_id(request.case_id)
         if not case:
-            return ExecuteActionResponse(
-                reply="Case not found.",
-                done=True,
-            )
+            return ExecuteActionResponse(reply="Case not found.", done=True)
 
         steps = case.get("next_steps", []) or []
         step = None
@@ -1067,17 +434,20 @@ class AgentService:
                 step = s
                 break
         if not step:
-            return ExecuteActionResponse(
-                reply="Step not found.",
-                done=True,
-            )
+            return ExecuteActionResponse(reply="Step not found.", done=True)
 
         action_type = step.get("action_type", "")
         if action_type != "generate_document":
             return ExecuteActionResponse(
                 reply=f"Step {request.step_number}: {step.get('text', '')}",
                 done=False,
-                action_buttons=[ActionButton(label="Mark as done", message=f"Mark step {request.step_number} as completed", style="primary")],
+                action_buttons=[
+                    ActionButton(
+                        label="Mark as done",
+                        message=f"Mark step {request.step_number} as completed",
+                        style="primary",
+                    )
+                ],
             )
 
         action_config = step.get("action_config", {}) or {}
@@ -1090,10 +460,17 @@ class AgentService:
                 "info_labels": {"details": "Details of the matter"},
             }
 
-        missing = [f for f in doc_config["required_info"] if f not in request.collected_info]
+        missing = [
+            f for f in doc_config["required_info"] if f not in request.collected_info
+        ]
         if missing:
             questions = [
-                ClarifyingQuestion(question=doc_config["info_labels"].get(f, f.replace("_", " ").title()), key=f)
+                ClarifyingQuestion(
+                    question=doc_config["info_labels"].get(
+                        f, f.replace("_", " ").title()
+                    ),
+                    key=f,
+                )
                 for f in missing
             ]
             return ExecuteActionResponse(
@@ -1147,17 +524,19 @@ class AgentService:
         now = datetime.now(timezone.utc).isoformat()
 
         try:
-            supabase_service.create_document({
-                "id": doc_id,
-                "case_id": request.case_id,
-                "doc_type": doc_type,
-                "title": doc_config["title"],
-                "content": doc_content,
-                "status": "draft",
-            })
+            supabase_service.create_document(
+                {
+                    "id": doc_id,
+                    "case_id": request.case_id,
+                    "doc_type": doc_type,
+                    "title": doc_config["title"],
+                    "content": doc_content,
+                    "status": "draft",
+                }
+            )
         except Exception as e:
             return ExecuteActionResponse(
-                reply=f"I generated the document but could not save it. The database table `case_documents` may not exist. Error: {e}",
+                reply=f"I generated the document but could not save it. Error: {e}",
                 document=DocumentDTO(
                     id=doc_id,
                     case_id=request.case_id,
@@ -1217,9 +596,7 @@ class AgentService:
             "\nNo markdown backticks. No extra text."
         )
 
-        messages = [
-            {"role": "system", "content": system_content},
-        ]
+        messages = [{"role": "system", "content": system_content}]
         for h in request.history:
             messages.append({"role": h.role, "content": h.content})
         messages.append({"role": "user", "content": request.message})
@@ -1253,7 +630,46 @@ class AgentService:
             reply=data.get("reply", reply_text),
             updated_notice=data.get("updated_notice", ""),
             updated_sections=data.get("updated_sections", []),
-            clarifying_questions=[ClarifyingQuestion(**cq) for cq in data.get("clarifying_questions", [])],
-            suggested_actions=[ActionButton(**ab) for ab in data.get("action_buttons", [])],
+            clarifying_questions=[
+                ClarifyingQuestion(**cq) for cq in data.get("clarifying_questions", [])
+            ],
+            suggested_actions=[
+                ActionButton(**ab) for ab in data.get("action_buttons", [])
+            ],
             document=document,
         )
+
+
+# Needed for execute_action
+DOCUMENT_TYPES = {
+    "demand_letter": {
+        "title": "Formal Demand Letter",
+        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
+        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
+    },
+    "legal_notice": {
+        "title": "Legal Notice",
+        "required_info": ["sender_name", "sender_address", "recipient_name", "recipient_address"],
+        "info_labels": {"sender_name": "Your full name", "sender_address": "Your address", "recipient_name": "Recipient's full name", "recipient_address": "Recipient's address"},
+    },
+    "court_filing": {
+        "title": "Court Filing / Petition",
+        "required_info": ["petitioner_name", "petitioner_address", "respondent_name", "respondent_address", "court_name"],
+        "info_labels": {"petitioner_name": "Your full name (Petitioner)", "petitioner_address": "Your address", "respondent_name": "Respondent's full name", "respondent_address": "Respondent's address", "court_name": "Name of the court"},
+    },
+    "affidavit": {
+        "title": "Affidavit",
+        "required_info": ["deponent_name", "deponent_address"],
+        "info_labels": {"deponent_name": "Your full name (Deponent)", "deponent_address": "Your address"},
+    },
+    "complaint": {
+        "title": "Formal Complaint",
+        "required_info": ["complainant_name", "complainant_address", "respondent_name"],
+        "info_labels": {"complainant_name": "Your full name (Complainant)", "complainant_address": "Your address", "respondent_name": "Respondent's name"},
+    },
+    "agreement": {
+        "title": "Legal Agreement",
+        "required_info": ["party_a_name", "party_a_address", "party_b_name", "party_b_address"],
+        "info_labels": {"party_a_name": "First Party name", "party_a_address": "First Party address", "party_b_name": "Second Party name", "party_b_address": "Second Party address"},
+    },
+}
