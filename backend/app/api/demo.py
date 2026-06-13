@@ -1,4 +1,5 @@
 import io
+import logging
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -8,6 +9,8 @@ from app.services.agent_service import AgentService
 from app.services.pdf_service import PdfService
 from app.services.rag_service import RagService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
 
 rag = RagService()
@@ -15,24 +18,73 @@ agent = AgentService(rag)
 
 
 @router.post("/analyze")
-async def demo_analyze(body: dict) -> AnalyzeResponseDTO:
+async def demo_analyze(body: dict):
     description = body.get("description", "")
-    request = AnalyzeRequestDTO(
-        case_id="",
-        description=description,
-        user_name="",
-        opponent_name="",
-        opponent_address="",
-    )
-    return await agent.analyze_case(request)
+    if not description.strip():
+        return AnalyzeResponseDTO(
+            case_type="other",
+            severity="low",
+            legal_domain="Other",
+            relevant_sections=[],
+            summary="",
+            next_steps=[],
+            reasoning_trace="Empty description",
+            ai_message="Please describe your legal problem so I can help you.",
+            case_readiness_score=0,
+            is_sufficient=False,
+            law_docs_available=[],
+            law_docs_coverage="",
+        )
+    try:
+        request = AnalyzeRequestDTO(
+            case_id="",
+            description=description,
+            user_name="",
+            opponent_name="",
+            opponent_address="",
+        )
+        return await agent.analyze_case(request)
+    except Exception as e:
+        logger.exception("Analysis failed")
+        return AnalyzeResponseDTO(
+            case_type="other",
+            severity="low",
+            legal_domain="Other",
+            relevant_sections=[],
+            summary="",
+            next_steps=[],
+            reasoning_trace=f"Error: {e}",
+            ai_message=f"Analysis failed: {str(e)}. Please try again or check that the backend services (LLM API, RAG database) are configured correctly.",
+            case_readiness_score=0,
+            is_sufficient=False,
+            law_docs_available=[],
+            law_docs_coverage="",
+        )
 
 
 @router.post("/update-evidence")
-async def demo_update_evidence(body: dict) -> AnalyzeResponseDTO:
+async def demo_update_evidence(body: dict):
     description = body.get("description", "")
     evidence_available = body.get("evidence_available", [])
     evidence_missing = body.get("evidence_missing", [])
-    return await agent.update_evidence(description, evidence_available, evidence_missing)
+    try:
+        return await agent.update_evidence(description, evidence_available, evidence_missing)
+    except Exception as e:
+        logger.exception("Evidence update failed")
+        return AnalyzeResponseDTO(
+            case_type="other",
+            severity="low",
+            legal_domain="Other",
+            relevant_sections=[],
+            summary="",
+            next_steps=[],
+            reasoning_trace=f"Error: {e}",
+            ai_message=f"Update failed: {str(e)}. Please try again.",
+            case_readiness_score=0,
+            is_sufficient=False,
+            law_docs_available=[],
+            law_docs_coverage="",
+        )
 
 
 @router.post("/pdf")

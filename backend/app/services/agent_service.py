@@ -83,7 +83,7 @@ class AgentService:
     async def _call_llm(
         self, model: str, messages: list, max_tokens: int, max_retries: int = 2
     ) -> str:
-        timeout = httpx.Timeout(30.0, connect=10.0)
+        timeout = httpx.Timeout(120.0, connect=15.0)
         for attempt in range(max_retries):
             try:
                 response = await self.client.chat.completions.create(

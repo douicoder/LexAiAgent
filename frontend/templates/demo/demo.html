@@ -307,11 +307,15 @@
       }, 1200);
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000);
         const res = await fetch(API + "/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ description }),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         if (!res.ok) throw new Error("Server error: " + res.statusText);
 
         clearInterval(progressTimer);
@@ -322,7 +326,10 @@
       } catch (err) {
         clearInterval(progressTimer);
         document.getElementById("error-section").classList.remove("hidden");
-        document.getElementById("error-message").textContent = err.message;
+        const msg = err.name === "AbortError"
+          ? "Request timed out after 3 minutes. The AI is taking too long to respond. Please try again."
+          : err.message;
+        document.getElementById("error-message").textContent = msg;
       } finally {
         document.getElementById("analyze-btn").disabled = false;
         document.getElementById("analyze-btn").textContent = "Analyze Case";
