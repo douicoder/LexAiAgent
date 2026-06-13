@@ -76,17 +76,23 @@ class AgentService:
             api_key=settings.GITHUB_TOKEN,
             base_url="https://models.github.ai/inference",
         )
+        # Second client with separate token for update_evidence (avoids rate limits)
+        self.client2 = AsyncOpenAI(
+            api_key=settings.GITHUB_TOKEN_2 or settings.GITHUB_TOKEN,
+            base_url="https://models.github.ai/inference",
+        )
         self.rag = rag
         self.legal = LegalHelper()
         self.text = TextHelper()
 
     async def _call_llm(
-        self, model: str, messages: list, max_tokens: int, max_retries: int = 2
+        self, model: str, messages: list, max_tokens: int, max_retries: int = 2, client=None
     ) -> str:
         timeout = httpx.Timeout(120.0, connect=15.0)
+        use_client = client or self.client
         for attempt in range(max_retries):
             try:
-                response = await self.client.chat.completions.create(
+                response = await use_client.chat.completions.create(
                     model=model,
                     messages=messages,
                     max_tokens=max_tokens,
@@ -148,11 +154,12 @@ class AgentService:
             f"Strengthen the legal documents by referencing the confirmed evidence. "
             f"Recalculate the case_readiness_score based on the evidence now available."
         )
-        return await self._run_llm_analysis(full_prompt)
+        return await self._run_llm_analysis(full_prompt, use_client=self.client2)
 
-    async def _run_llm_analysis(self, description: str) -> AnalyzeResponseDTO:
+    async def _run_llm_analysis(self, description: str, use_client=None) -> AnalyzeResponseDTO:
         reasoning_trace = []
         today = datetime.now(timezone.utc).strftime("%d %B %Y")
+        client = use_client or self.client
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 1: Classify + Vagueness check (parallel, fast model)
@@ -177,11 +184,11 @@ class AgentService:
         classify_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": classify_prompt},
-        ], 1000)
+        ], 1000, client=client)
         vague_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": vague_prompt},
-        ], 1000)
+        ], 1000, client=client)
 
         classify_text, vague_text = await asyncio.gather(classify_task, vague_task)
 
@@ -218,7 +225,7 @@ class AgentService:
             search_text = await self._call_llm(FAST_MODEL, [
                 {"role": "system", "content": self.legal.system_prompt()},
                 {"role": "user", "content": f"Given this legal case: {description}\n\nReturn ONLY a JSON: {{\"query\": \"search terms for Indian law\"}}"},
-            ], 500)
+            ], 500, client=client)
             query = _extract_json(search_text).get("query", description)
         except ValueError:
             pass
@@ -297,22 +304,22 @@ class AgentService:
         notice_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": notice_prompt},
-        ], 4000)
+        ], 4000, client=client)
 
         evidence_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": evidence_prompt},
-        ], 2000)
+        ], 2000, client=client)
 
         docs_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": docs_prompt},
-        ], 6000)
+        ], 6000, client=client)
 
         plan_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": plan_prompt},
-        ], 2000)
+        ], 2000, client=client)
 
         notice_text, evidence_text, docs_text, plan_text = await asyncio.gather(
             notice_task, evidence_task, docs_task, plan_task

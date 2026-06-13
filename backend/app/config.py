@@ -6,6 +6,7 @@ env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 
 class Settings(BaseSettings):
     GITHUB_TOKEN: str | None = None
+    GITHUB_TOKEN_2: str | None = None
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None
     SUPABASE_SERVICE_KEY: str
