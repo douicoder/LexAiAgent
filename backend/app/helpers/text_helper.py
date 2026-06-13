@@ -6,8 +6,8 @@ from app.config import settings
 class TextHelper:
     def __init__(self):
         self.client = AsyncOpenAI(
-            api_key=settings.GITHUB_TOKEN,
-            base_url="https://models.github.ai/inference",
+            api_key=settings.EMBEDDING_API_KEY or settings.GITHUB_TOKEN,
+            base_url=settings.EMBEDDING_BASE_URL,
         )
 
     async def detect_language(self, text: str) -> str:
@@ -24,6 +24,7 @@ class TextHelper:
                 },
                 {"role": "user", "content": text},
             ],
+            extra_body={"reasoning": {"enabled": True}},
         )
         return response.choices[0].message.content.strip()
 

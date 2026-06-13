@@ -25,7 +25,7 @@ from app.helpers.text_helper import TextHelper
 from app.interfaces.i_rag_service import IRagService
 
 LLM_MODEL = settings.LLM_MODEL
-FAST_MODEL = "gpt-4o"
+FAST_MODEL = settings.FAST_MODEL
 
 AVAILABLE_LAW_DOCS = [
     "Model Tenancy Act, 2021",
@@ -72,16 +72,17 @@ def _generate_doc_id() -> str:
 
 class AgentService:
     def __init__(self, rag: IRagService):
+        self._api_key = settings.LLM_API_KEY or settings.GITHUB_TOKEN
         http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0))
         self.client = AsyncOpenAI(
-            api_key=settings.GITHUB_TOKEN,
-            base_url="https://models.github.ai/inference",
+            api_key=self._api_key,
+            base_url=settings.LLM_BASE_URL,
             http_client=http_client,
         )
         http_client2 = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0))
         self.client2 = AsyncOpenAI(
-            api_key=settings.GITHUB_TOKEN_2 or settings.GITHUB_TOKEN,
-            base_url="https://models.github.ai/inference",
+            api_key=self._api_key,
+            base_url=settings.LLM_BASE_URL,
             http_client=http_client2,
         )
         self.rag = rag
@@ -99,6 +100,7 @@ class AgentService:
                     model=model,
                     messages=messages,
                     max_tokens=max_tokens,
+                    extra_body={"reasoning": {"enabled": True}},
                     timeout=timeout,
                 )
                 return response.choices[0].message.content.strip() or ""
@@ -578,6 +580,7 @@ class AgentService:
                 {"role": "user", "content": gen_prompt},
             ],
             max_tokens=16000,
+            extra_body={"reasoning": {"enabled": True}},
         )
         gen_text = response.choices[0].message.content.strip() or ""
         try:
@@ -672,6 +675,7 @@ class AgentService:
             model=LLM_MODEL,
             messages=messages,
             max_tokens=4000,
+            extra_body={"reasoning": {"enabled": True}},
         )
         reply_text = response.choices[0].message.content or ""
 

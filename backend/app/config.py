@@ -17,7 +17,12 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_BASE_URL: str = "https://models.github.ai/inference"
+    EMBEDDING_API_KEY: str | None = None
     LLM_MODEL: str = "gpt-4o"
+    FAST_MODEL: str = "gpt-4o"
+    LLM_BASE_URL: str = "https://models.github.ai/inference"
+    LLM_API_KEY: str | None = None
     SUPABASE_STORAGE_BUCKET: str = "legal-notices"
     DATABASE: str = "supabase"  # "supabase" | "sqlite"
     

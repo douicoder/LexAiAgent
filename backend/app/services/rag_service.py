@@ -25,11 +25,9 @@ def _squash_bm25(score: float) -> float:
 
 class RagService(IRagService):
     def __init__(self):
-        if not settings.GITHUB_TOKEN:
-            raise ValueError("GITHUB_TOKEN is required for RAG embeddings.")
         self.client = OpenAI(
-            api_key=settings.GITHUB_TOKEN,
-            base_url="https://models.github.ai/inference",
+            api_key=settings.EMBEDDING_API_KEY or settings.GITHUB_TOKEN,
+            base_url=settings.EMBEDDING_BASE_URL,
         )
         if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set.")
