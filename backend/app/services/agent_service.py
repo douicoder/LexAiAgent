@@ -284,7 +284,7 @@ class AgentService:
         evidence_suggestions = []
 
         # ── Classify case type ──────────────────────────────────────────
-        is_tenancy = any(kw in desc_lower for kw in ["landlord", "tenant", "deposit", "rent", "evict", "lease"])
+        is_tenancy = any(kw in desc_lower for kw in ["landlord", "tenant", "deposit", "rent", "evict", "lease", "thrown out", "kicked out", "locked out", "changed the lock", "put my stuff out", "illegal eviction"])
         is_consumer = any(kw in desc_lower for kw in ["consumer", "product", "defective", "service", "laptop", "refund", "warranty"])
         is_employment = any(kw in desc_lower for kw in ["salary", "employer", "wage", "termination", "fired", "employment"])
 
