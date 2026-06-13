@@ -274,33 +274,49 @@ class AgentService:
 
         # --- Call B: Legal Notice ---
         notice_prompt = (
-            f"{base_context}\n"
-            f"Generate a formal LEGAL NOTICE in Indian legal format.\n"
-            f"Write FROM the user ({user_role}) TO the opposing party.\n"
-            f"Include: TO, FROM, Date, Subject, body with legal grounds, demand clause, signature.\n"
-            f"Reference the law sections above. Be specific to this case.\n"
-            f"Return ONLY the plain text of the legal notice. No JSON."
+            f"Generate a LEGAL NOTICE document.\n\n"
+            f"Case facts: {description}\n"
+            f"User role: {user_role}\n"
+            f"Applicable laws: {section_refs}\n\n"
+            f"FORMAT — follow this EXACTLY, no extra text:\n"
+            f"---\n"
+            f"LEGAL NOTICE\n\n"
+            f"TO:\n[Name]\n[Address]\n\n"
+            f"FROM:\n[Name]\n[Address]\n\n"
+            f"Date: {today}\n\n"
+            f"SUBJECT: [brief subject]\n\n"
+            f"Dear Sir/Madam,\n\n"
+            f"[2-3 paragraphs: state the facts, cite the legal grounds with specific sections, state the demand]\n\n"
+            f"DEMAND:\n[clear demand with deadline]\n\n"
+            f"Yours faithfully,\n[Name]\n[Phone]\n[Email]\n---\n\n"
+            f"Return ONLY the document text between the --- markers. No analysis, no JSON, no explanation."
         )
 
         # --- Call C: Other Documents (demand letter + complaint) ---
         docs_prompt = (
-            f"{base_context}\n"
-            f"Generate TWO documents as JSON:\n"
-            f'1. A formal DEMAND LETTER from the {user_role} to the opposing party.\n'
-            f"2. A COMPLAINT/PETITION for filing with the appropriate authority.\n"
-            f"Both must reference the law sections above and be specific to this case.\n"
+            f"Generate TWO legal documents as JSON.\n\n"
+            f"Case facts: {description}\n"
+            f"User role: {user_role}\n"
+            f"Applicable laws: {section_refs}\n\n"
+            f"DOCUMENT 1 - Demand Letter: Formal demand from {user_role} to opposing party. 2-3 paragraphs.\n"
+            f"DOCUMENT 2 - Complaint: Formal complaint/petition for filing. Structured with facts, legal grounds, prayer.\n\n"
+            f"Both must be clean legal documents. No analysis text, no reasoning.\n\n"
             f"Return ONLY valid JSON:\n"
-            f'{{"other_documents": [{{"doc_type": "demand_letter", "title": "...", "content": "..."}}, {{"doc_type": "complaint", "title": "...", "content": "..."}}]}}'
+            f'{{"other_documents": [{{"doc_type": "demand_letter", "title": "Demand Letter", "content": "full document text here"}}, {{"doc_type": "complaint", "title": "Complaint", "content": "full document text here"}}]}}'
         )
 
         # --- Call D: Action Plan ---
         plan_prompt = (
-            f"{base_context}\n"
-            f"Generate a concrete action plan as JSON.\n"
-            f"Each step: number, text, action_type ('generate_document'|'info_gathering'|'wait'), action_config ({{doc_type, title}} if generate_document).\n"
+            f"Generate a step-by-step action plan for this legal case.\n\n"
+            f"Case: {description}\n"
+            f"User role: {user_role}\n\n"
             f"Return ONLY valid JSON:\n"
-            f'{{"next_steps": [{{"number": 1, "text": "...", "action_type": "...", "action_config": {{}}}}], '
-            f'"action_buttons": [{{"label": "...", "message": "...", "style": "primary"}}]}}'
+            f'{{"next_steps": ['
+            f'{{"number": 1, "text": "step description", "action_type": "info_gathering", "action_config": {{}}}}, '
+            f'{{"number": 2, "text": "step description", "action_type": "generate_document", "action_config": {{"doc_type": "demand_letter", "title": "Demand Letter"}}}}'
+            f'], '
+            f'"action_buttons": [{{"label": "Download Documents", "message": "Download all generated documents", "style": "primary"}}]'
+            f'}}'
         )
 
         # Fire all 4 in parallel
@@ -331,14 +347,16 @@ class AgentService:
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 4: Parse all results
         # ═══════════════════════════════════════════════════════════════════
+        # Clean legal notice — strip any analysis/reasoning before the actual document
+        legal_notice = self._clean_legal_notice(notice_text)
         # Parse evidence/summary
         try:
             evidence_data = _extract_json(evidence_text)
         except ValueError:
             evidence_data = {}
 
-        # Parse legal notice (plain text, no JSON)
-        legal_notice = notice_text.strip()
+        # Parse legal notice (cleaned)
+        # legal_notice already set above by _clean_legal_notice
 
         # Parse other documents
         try:
@@ -418,6 +436,48 @@ class AgentService:
             + ". Your case type may not be fully covered by the available legal corpus. "
             "Consider consulting a qualified legal professional for case-specific advice."
         )
+
+    def _clean_legal_notice(self, text: str) -> str:
+        """Strip analysis/reasoning from LLM output, keep only the legal document."""
+        text = text.strip()
+
+        # Try to extract between --- markers if present
+        if "---" in text:
+            parts = text.split("---")
+            # Take the content between first pair of --- markers
+            if len(parts) >= 3:
+                text = parts[1].strip()
+            elif len(parts) == 2:
+                text = parts[-1].strip()
+
+        # Find the start of the actual document (look for LEGAL NOTICE header)
+        lines = text.split("\n")
+        start_idx = 0
+        for i, line in enumerate(lines):
+            lower = line.strip().lower()
+            if any(kw in lower for kw in ["legal notice", "to:", "to:\n"]):
+                start_idx = i
+                break
+
+        # Remove trailing analysis/reasoning
+        end_idx = len(lines)
+        for i in range(len(lines) - 1, -1, -1):
+            lower = lines[i].strip().lower()
+            if any(kw in lower for kw in ["yours faithfully", "yours sincerely", "[name]", "[phone]", "[email]"]):
+                end_idx = i + 1
+                # Include any remaining signature lines
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip():
+                        end_idx = j + 1
+                break
+
+        result = "\n".join(lines[start_idx:end_idx]).strip()
+
+        # If result is too short or looks like analysis, return original
+        if len(result) < 50:
+            return text
+
+        return result
 
     async def execute_action(
         self,
