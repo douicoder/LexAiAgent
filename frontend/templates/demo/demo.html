@@ -157,7 +157,7 @@
         <!-- Evidence Checklist -->
         <div class="mt-4 pt-4 border-t border-gray-100">
           <h4 class="text-sm font-semibold text-gray-700 mb-2">Required Evidence</h4>
-          <p class="text-xs text-gray-400 mb-3">Check what you already have. Unchecked items = still needed.</p>
+          <p class="text-xs text-gray-400 mb-3">Check what you already have. Unchecked items = still needed. Documents will update based on your evidence.</p>
           <div id="evidence-checklist" class="space-y-1"></div>
 
           <!-- Confirmed evidence display -->
@@ -183,7 +183,7 @@
             </span>
             <span class="flex-1"></span>
             <button id="submit-evidence-btn" onclick="submitEvidence()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              Update Readiness Score
+              Update Score & Documents
             </button>
           </div>
         </div>
@@ -567,7 +567,7 @@
         alert("Failed to update: " + err.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = "Update Readiness Score";
+        btn.textContent = "Update Score & Documents";
       }
     }
 

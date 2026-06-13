@@ -250,6 +250,130 @@ class AgentService:
             result = result.replace(placeholder, value)
         return result
 
+    def _build_evidence_section(self, ev_available: list[str], ev_missing: list[str], numbered: bool = False) -> str:
+        lines = []
+        if ev_available:
+            lines.append("EVIDENCE IN POSSESSION:")
+            for i, item in enumerate(ev_available):
+                prefix = f"{i+1}. " if numbered else "- "
+                lines.append(f"{prefix}{item}")
+        if ev_missing:
+            lines.append("\nEVIDENCE TO BE OBTAINED:")
+            for i, item in enumerate(ev_missing):
+                prefix = f"{len(ev_available)+i+1}. " if numbered else "- "
+                lines.append(f"{prefix}{item}")
+        if not ev_available and not ev_missing:
+            lines.append("[Evidence list to be compiled]")
+        return "\n".join(lines)
+
+    def _generate_documents(self, description: str, sections: list[dict], section_refs: str,
+                            ev_available: list[str], ev_missing: list[str],
+                            evidence_missing_items: list[str], now_str: str) -> tuple[str, list[DocumentDTO]]:
+        has_evidence = len(ev_available) > 0
+
+        if has_evidence:
+            evidence_summary = (
+                f"The complainant has gathered the following evidence to support this claim:\n"
+                + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(ev_available))
+            )
+            if ev_missing:
+                evidence_summary += (
+                    f"\n\nThe complainant is in the process of obtaining the following additional evidence:\n"
+                    + "\n".join(f"  {len(ev_available)+i+1}. {item}" for i, item in enumerate(ev_missing))
+                )
+            strength_note = (
+                "The presence of this documented evidence significantly strengthens the complainant's position "
+                "and establishes a clear factual basis for the claims made herein."
+            )
+        else:
+            evidence_summary = (
+                "The following evidence will be collected and submitted in support of this claim:\n"
+                + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(evidence_missing_items))
+            )
+            strength_note = (
+                "The complainant acknowledges that gathering the above evidence is critical to "
+                "strengthening the case before proceeding with formal legal action."
+            )
+
+        notice_content = (
+            f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
+            f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+            f"FROM:\n[Your Name]\n[Your Address]\n\n"
+            f"Date: {now_str}\n\n"
+            f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
+            f"Dear Sir/Madam,\n\n"
+            f"I, [Your Name], was a tenant at your property located at [Property Address] "
+            f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
+            f"LEGAL GROUNDS (from database search):\n"
+            f"{section_refs}\n\n"
+            f"{evidence_summary}\n\n"
+            f"{strength_note}\n\n"
+            f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
+            f"within 15 days, failing which legal proceedings will be initiated.\n\n"
+            f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+        )
+
+        other_docs = [
+            DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
+                f"FORMAL DEMAND LETTER\n"
+                f"==============================\n\n"
+                f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Formal demand for refund of security deposit\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"This is a formal demand for the immediate refund of my security deposit. "
+                f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
+                f"LEGAL GROUNDS:\n"
+                f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
+                f"{section_refs}\n\n"
+                f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
+                f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
+                f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
+                f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
+                f"{evidence_summary}\n\n"
+                f"{strength_note}\n\n"
+                f"DEMAND:\n"
+                f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
+                f"Failure to comply will result in immediate legal proceedings.\n\n"
+                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+            )),
+            DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
+                f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
+                f"==============================\n\n"
+                f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
+                f"COMPLAINT NO: _____\n\n"
+                f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
+                f"MOST RESPECTFULLY SHOWETH:\n\n"
+                f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
+                f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
+                f"3. The complainant vacated the premises on [Date] after proper notice.\n"
+                f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
+                f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
+                f"LEGAL PROVISIONS INVOKED:\n"
+                f"This complaint is grounded in the following legal provisions identified through database search:\n"
+                f"{section_refs}\n\n"
+                f"The respondent's actions constitute:\n"
+                f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
+                f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
+                f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
+                f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
+                f"law provision governing security deposit refunds.\n"
+                f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
+                f"EVIDENCE RELIED UPON:\n"
+                f"{evidence_summary}\n\n"
+                f"{strength_note}\n\n"
+                f"PRAYER:\n"
+                f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
+                f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
+                f"b) Award costs of the proceedings.\n"
+                f"c) Pass any other order deemed fit.\n\n"
+                f"Complainant\n[Your Name]\n[Date]"
+            )),
+        ]
+
+        return notice_content, other_docs
+
     def _generate_action_plan(self, description: str, ev_available: list[str], ev_missing: list[str], all_items: list[str]) -> tuple[list[ActionStep], list[str]]:
         desc_lower = description.lower()
         steps = []
@@ -382,67 +506,6 @@ class AgentService:
             ]
 
             section_refs = self._build_section_refs(sections)
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
-
-                    f"FORMAL DEMAND LETTER\n"
-                    f"==============================\n\n"
-                    f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Formal demand for refund of security deposit\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"This is a formal demand for the immediate refund of my security deposit. "
-                    f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
-                    f"{section_refs}\n\n"
-                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
-                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
-                    f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
-                    f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
-                    f"EVIDENCE IN SUPPORT:\n"
-                    f"The following evidence substantiates this claim:\n"
-                    + "\n".join(f"- {item}" for item in evidence_missing_items[:4]) + "\n\n"
-                    f"DEMAND:\n"
-                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
-                    f"Failure to comply will result in immediate legal proceedings.\n\n"
-                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-                )),
-                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
-
-                    f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
-                    f"==============================\n\n"
-                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
-                    f"COMPLAINT NO: _____\n\n"
-                    f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
-                    f"MOST RESPECTFULLY SHOWETH:\n\n"
-                    f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
-                    f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
-                    f"3. The complainant vacated the premises on [Date] after proper notice.\n"
-                    f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
-                    f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
-                    f"LEGAL PROVISIONS INVOKED:\n"
-                    f"This complaint is grounded in the following legal provisions identified through database search:\n"
-                    f"{section_refs}\n\n"
-                    f"The respondent's actions constitute:\n"
-                    f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
-                    f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
-                    f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
-                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
-                    f"law provision governing security deposit refunds.\n"
-                    f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
-                    f"EVIDENCE RELIED UPON:\n"
-                    + "\n".join(f"{i+1}. {item}" for i, item in enumerate(evidence_missing_items)) + "\n\n"
-                    f"PRAYER:\n"
-                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
-                    f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
-                    f"b) Award costs of the proceedings.\n"
-                    f"c) Pass any other order deemed fit.\n\n"
-                    f"Complainant\n[Your Name]\n[Date]"
-                )),
-            ]
             steps = []
             recommended = []
 
@@ -566,27 +629,16 @@ class AgentService:
 
         readiness = min(100, detail_score + evidence_score + legal_score)
 
-        # ── Generate legal notice draft ──
-        notice_content = (
-            f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
-            f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-            f"FROM:\n[Your Name]\n[Your Address]\n\n"
-            f"Date: {now_str}\n\n"
-            f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
-            f"Dear Sir/Madam,\n\n"
-            f"I, [Your Name], was a tenant at your property located at [Property Address] "
-            f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
-            f"LEGAL GROUNDS (from database search):\n"
-            f"{section_refs}\n\n"
-            f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
-            f"within 15 days, failing which legal proceedings will be initiated.\n\n"
-            f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+        # ── Generate documents with evidence context ──
+        notice_content, other_docs = self._generate_documents(
+            description, sections, section_refs, ev_available, ev_missing,
+            evidence_missing_items, now_str
         )
 
         # ── Dynamically generate action plan based on description + evidence ──
         steps, recommended = self._generate_action_plan(description, ev_available, ev_missing, evidence_missing_items)
 
-        # Render ready-to-use documents — fill placeholders, strip evidence/draft boilerplate
+        # Render ready-to-use documents — fill placeholders
         notice = self._render_doc_template(notice_content, info)
         updated_other = []
         for doc in other_docs:
