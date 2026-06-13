@@ -357,7 +357,6 @@ class AgentService:
             risk = "medium"
             summary = "This appears to be a tenancy-related dispute. Based on your description, there may be legal grounds to pursue a claim."
             ai_message = "I've analyzed your tenancy issue. Let me outline the legal landscape and what you'll need to build a strong case."
-            base_readiness = 25
             coverage = LAW_DOCS_COVERAGE_TENANCY
             sections = [
                 {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
@@ -479,13 +478,66 @@ class AgentService:
         # ── Extract case info from description for document filling ────
         info = self._extract_case_info(description)
 
-        # ── Calculate readiness score ──────────────────────────────────
-        detail_score = min(30, word_count * 3)
-        for keyword in ["receipt", "agreement", "contract", "invoice", "bank", "payment", "photos", "email", "letter", "document", "proof", "evidence", "record", "statement", "witness"]:
-            if keyword in desc_lower:
-                detail_score += 3
-        detail_score = min(40, detail_score)
+        # ── Calculate readiness score (brutally honest) ────────────────
+        # No free points. Score reflects how ready the case actually is.
+        #
+        # Description Quality (0-30):
+        #   - Has specific monetary amount: +5
+        #   - Has specific dates or timeframes: +5
+        #   - Has names of parties involved: +5
+        #   - Describes specific events/actions taken: +5
+        #   - Word count > 25 (not just a sentence): +5
+        #   - Word count > 50 (genuinely detailed): +5
+        #
+        # Evidence Confirmed (0-50):
+        #   Only counts when user explicitly confirms having evidence.
+        #   Proportion of confirmed items * 50.
+        #
+        # Legal Strength (0-20):
+        #   - Clear remedy sought (refund, repair, reinstatement): +10
+        #   - Adverse action documented (eviction notice, refusal, damage): +10
 
+        detail_score = 0
+
+        # Specific monetary amount
+        if re.search(r'(?:rs\.?\s*|₹\s*|rupees?\s+)\d+', desc_lower):
+            detail_score += 5
+
+        # Dates or timeframes
+        date_keywords = ["january", "february", "march", "april", "may", "june",
+                         "july", "august", "september", "october", "november", "december",
+                         "2023", "2024", "2025", "2026", "2027",
+                         "months ago", "weeks ago", "days ago", "year ago", "years ago",
+                         "last month", "last week", "last year", "ago"]
+        if any(kw in desc_lower for kw in date_keywords):
+            detail_score += 5
+
+        # Names of parties (capitalized words after "landlord", "tenant", "name is", etc.)
+        name_patterns = [
+            r'(?:my\s+)?landlord\s+[A-Z]',
+            r'(?:my\s+)?name\s+is\s+[A-Z]',
+            r'(?:landlord|tenant|owner|respondent)\s+[A-Z]',
+        ]
+        if any(re.search(p, description) for p in name_patterns):
+            detail_score += 5
+
+        # Specific events/actions described
+        action_keywords = ["refusing", "refused", "served", "notified", "filed", "sent",
+                           "demanded", "requested", "reported", "complained", "emailed",
+                           "called", "visited", "inspected", "terminated", "evicted",
+                           "damaged", "broken", "leaked", "flooded", "mold"]
+        if sum(1 for kw in action_keywords if kw in desc_lower) >= 2:
+            detail_score += 5
+
+        # Word count thresholds
+        if word_count > 25:
+            detail_score += 5
+        if word_count > 50:
+            detail_score += 5
+
+        detail_score = min(30, detail_score)
+
+        # Evidence score: only when user confirms what they actually have
         if evidence_available_override is not None:
             ev_available = evidence_available_override
             if evidence_missing_override is not None:
@@ -500,7 +552,19 @@ class AgentService:
             ev_missing = evidence_missing_items
             evidence_score = 0
 
-        readiness = min(100, base_readiness + detail_score + evidence_score)
+        # Legal strength: clear grounds for a claim
+        legal_score = 0
+        remedy_keywords = ["refund", "return", "repair", "compensate", "reinstate",
+                           "evict", "eviction", "terminate", "restore", "recover"]
+        if any(kw in desc_lower for kw in remedy_keywords):
+            legal_score += 10
+        adverse_keywords = ["refusing", "refused", "illegally", "without notice",
+                            "without consent", "damaged", "harass", "harassment",
+                            "threatened", "locked out", "changed the lock"]
+        if any(kw in desc_lower for kw in adverse_keywords):
+            legal_score += 10
+
+        readiness = min(100, detail_score + evidence_score + legal_score)
 
         # ── Generate legal notice draft ──
         notice_content = (
@@ -668,7 +732,7 @@ class AgentService:
             f'  "summary" — case summary and recommended approach (2-3 sentences)\n'
             f'  "steps" — array of {{number, text, action_type (generate_document|wait|info_gathering), action_config: {{doc_type, title}}}}\n'
             f'  "legal_notice_draft" — plain text string (NOT a JSON object). A complete formal legal notice with TO, FROM, subject, body, legal grounds, demand clause, and signature. Use Indian legal format.\n'
-            f'  "case_readiness_score" — integer 0-100\n'
+            f'  "case_readiness_score" — integer 0-100. BE BRUTALLY HONEST. A vague one-liner = 0-10. A short description with some detail = 15-30. A detailed description with clear facts = 30-50. Detailed + confirmed evidence = 50-80. Fully documented case with all evidence = 80-100. Do NOT inflate this score.\n'
             f'  "evidence_available" — array of strings (evidence user likely has)\n'
             f'  "evidence_missing" — array of strings (evidence user still needs)\n'
             f'  "risk_level" — "low"|"medium"|"high"\n'
