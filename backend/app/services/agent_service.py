@@ -250,6 +250,68 @@ class AgentService:
             result = result.replace(placeholder, value)
         return result
 
+    def _generate_action_plan(self, description: str, ev_available: list[str], ev_missing: list[str], all_items: list[str]) -> tuple[list[ActionStep], list[str]]:
+        desc_lower = description.lower()
+        steps = []
+        num = 1
+
+        # Evidence collection steps — personalized per missing item
+        ev_prompts = {
+            "Rental agreement / lease contract": "Locate your rental agreement or request a copy from the landlord",
+            "Deposit payment receipt or bank transfer record": "Obtain bank statements showing the security deposit transaction",
+            "Written communication with landlord about the deposit": "Gather all emails, messages, or letters exchanged with the landlord about the deposit",
+            "Photographs/video of apartment condition at move-in and move-out": "Collect dated photographs or video of the property condition at move-in and move-out",
+            "Any repair bills or damage estimates the landlord claims": "Request written repair estimates or bills for any damages the landlord alleges",
+            "Move-out inspection report (if any)": "Obtain the move-out inspection report from the landlord or building manager",
+            "Witness statements from neighbours or building staff": "Speak to neighbours or building staff willing to provide written statements about the property condition",
+        }
+
+        # For items still missing, add a collection step
+        for item in ev_missing:
+            prompt = ev_prompts.get(item, f"Collect the following: {item}")
+            steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+        # For items already confirmed, add an acknowledgment/organization step
+        if ev_available:
+            have_list = "; ".join(ev_available[:3])
+            suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
+            steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels.", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+        # Create a written timeline
+        has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
+        if has_dates:
+            steps.append(ActionStep(number=num, text="Create a written timeline of events using the dates you mentioned — include move-in, vacate, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
+        else:
+            steps.append(ActionStep(number=num, text="Create a detailed written timeline of all events — include move-in date, vacate date, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
+        num += 1
+
+        # Demand letter
+        steps.append(ActionStep(number=num, text="Send a formal demand letter to the landlord via registered post and email requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"))
+        num += 1
+
+        # Lawyer consultation
+        steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about limitation period, interest on delayed deposit, and jurisdiction for filing a recovery suit", action_type="info_gathering", action_config={}, status="pending"))
+        num += 1
+
+        # File complaint
+        steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of money with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"))
+        num += 1
+
+        # Preserve evidence
+        steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
+        num += 1
+
+        recommended = [
+            f"Send a formal demand letter to the landlord via registered post AD and email (keep proof of delivery)",
+            f"Collect and organize: {', '.join(all_items[:4])}",
+            "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
+            "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
+            "Preserve all evidence — do not delete emails, messages, or call recordings",
+        ]
+        return steps, recommended
+
     def _mock_analysis(self, description: str, evidence_available_override: list[str] | None = None, evidence_missing_override: list[str] | None = None) -> AnalyzeResponseDTO:
         desc_lower = description.lower().strip()
         now_str = datetime.now(timezone.utc).strftime('%d %B %Y')
@@ -382,19 +444,8 @@ class AgentService:
                     f"Complainant\n[Your Name]\n[Date]"
                 )),
             ]
-            steps = [
-                ActionStep(number=1, text="Gather all documents related to your tenancy including rental agreement, deposit receipts, and communication records", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=2, text="Send a formal demand letter to your landlord requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"),
-                ActionStep(number=3, text="If no response, consult a lawyer specializing in landlord-tenant disputes. Ask: 'What is the limitation period for filing a recovery suit?'; 'Can I claim interest on the delayed deposit?'; 'What court should I file in based on the deposit amount?'", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=4, text="File a complaint with the Rent Controller or file a civil suit for recovery of money", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"),
-            ]
-            recommended = [
-                "Send a formal demand letter to the landlord via registered post and email (keep proof of delivery)",
-                "Collect and organize: rental agreement, deposit payment proof, move-out photos, all communication with landlord",
-                "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
-                "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
-                "Preserve all evidence — do not delete emails, messages, or call recordings",
-            ]
+            steps = []
+            recommended = []
 
         else:
             # Consumer, employment, and unrecognized case types — not in knowledge base
@@ -467,6 +518,9 @@ class AgentService:
             f"within 15 days, failing which legal proceedings will be initiated.\n\n"
             f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
         )
+
+        # ── Dynamically generate action plan based on description + evidence ──
+        steps, recommended = self._generate_action_plan(description, ev_available, ev_missing, evidence_missing_items)
 
         # Render ready-to-use documents — fill placeholders, strip evidence/draft boilerplate
         notice = self._render_doc_template(notice_content, info)
