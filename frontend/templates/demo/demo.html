@@ -511,6 +511,14 @@
     }
 
     function onEvidenceChange() {
+      Object.keys(evidenceChecked).forEach(k => {
+        const el = document.getElementById(k);
+        if (el) evidenceChecked[k] = el.checked;
+      });
+      Object.keys(suggestionChecked).forEach(k => {
+        const el = document.getElementById(k);
+        if (el) suggestionChecked[k] = el.checked;
+      });
       const evAvail = Object.keys(evidenceChecked).filter(k => evidenceChecked[k]).length;
       const sugAvail = Object.keys(suggestionChecked).filter(k => suggestionChecked[k]).length;
       document.getElementById("checked-count").textContent = evAvail;
