@@ -396,207 +396,34 @@ class AgentService:
                 "Preserve all evidence — do not delete emails, messages, or call recordings",
             ]
 
-        elif is_consumer:
-            case_type = "consumer_dispute"
-            legal_domain = "Consumer Protection"
-            severity = "medium"
-            risk = "medium"
-            summary = "This appears to be a consumer dispute. However, our database currently only has tenancy/property law documents ingested. Consumer Protection Act provisions shown below are simulated for reference."
-            ai_message = "I've analyzed your consumer complaint. Note: our legal database currently covers tenancy and property law. Consumer-specific laws have not been ingested yet. The analysis below uses general legal principles."
-            base_readiness = 20
-            coverage = LAW_DOCS_COVERAGE_LIMITED
-            sections = [
-                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.75, "vector_score": 0.72, "bm25_score": 0.70, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive compensation for any loss or damage caused to him thereby."},
-            ]
-            evidence_missing_items = [
-                "Purchase invoice / bill of sale",
-                "Warranty card or guarantee certificate",
-                "Photographs/videos clearly showing the defect",
-                "Written complaint made to the seller (email/letter/chat)",
-                "Seller's response/rejection letter or message",
-                "Expert opinion or service centre report about the defect",
-                "Payment proof (credit card statement, UPI receipt, bank transfer)",
-            ]
-            evidence_suggestions = [
-                "Get a written expert opinion from an authorized service center",
-                "File a complaint on the Consumer Helpline (1915) as a first step",
-                "Get a legal consultation from a consumer rights lawyer",
-                "Check if the product is covered under additional warranty or insurance",
-                "Obtain CCTV footage of the product delivery/unboxing if available",
-            ]
-
-            section_refs = self._build_section_refs(sections)
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Consumer Complaint Letter", content=(
-
-                    f"COMPLAINT LETTER FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
-                    f"TO:\n[Seller/Service Provider Name]\n[Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Complaint regarding defective goods / deficient services\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"I, [Your Name], purchased [Product/Service] from you on [Date] for Rs. [Amount]. "
-                    f"The product is defective / service is deficient in the following manner:\n\n"
-                    f"[Describe defect/deficiency in detail]\n\n"
-                    f"Despite my complaint dated [Date], you have failed to provide a satisfactory resolution.\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"{section_refs}\n\n"
-                    f"Note: The Consumer Protection Act, 2019 is the primary law governing this matter, "
-                    f"but it has not yet been ingested into our database. The above contract law provision "
-                    f"is provided as a general reference.\n\n"
-                    f"You are hereby called upon to:\n"
-                    f"1. Replace the defective product / rectify the deficient service; OR\n"
-                    f"2. Refund the full amount of Rs. [Amount] within 15 days.\n\n"
-                    f"Failure to comply will result in me filing a complaint before the appropriate Consumer Forum.\n\n"
-                    f"Yours faithfully,\n[Your Name]"
-                )),
-            ]
-            steps = [
-                ActionStep(number=1, text="Send a written complaint to the seller via email and registered post. Keep copies of all correspondence.", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Consumer Complaint Letter"}, status="pending"),
-                ActionStep(number=2, text="Wait 15 days for the seller's response. If they respond, evaluate their offer.", action_type="wait", action_config={}, status="pending"),
-                ActionStep(number=3, text="Consult a consumer rights lawyer since our database does not have the Consumer Protection Act ingested. Ask: 'What is the pecuniary jurisdiction for my claim?'; 'Can I claim compensation for mental harassment?'; 'What documents are needed for filing before the District Commission?'", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=4, text="File a complaint before the appropriate Consumer Disputes Redressal Commission", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Consumer Complaint"}, status="pending"),
-            ]
-            recommended = [
-                "Send a formal complaint to the seller via registered post AD and email",
-                "Collect: purchase invoice, warranty card, defect photos/videos, seller's response, payment proof",
-                "Consult a consumer lawyer — our database lacks consumer-specific laws, so professional advice is essential",
-                "File a complaint on the Consumer Helpline (1915) or e-Daakhil portal as a first step",
-                "If claim is under Rs. 50 lakhs, file before the District Consumer Disputes Redressal Commission",
-            ]
-
-        elif is_employment:
-            case_type = "employment_dispute"
-            legal_domain = "Employment"
-            severity = "high"
-            risk = "high"
-            summary = "This involves an employment-related dispute. However, our database currently only has tenancy/property law documents. Employment law provisions below are simulated for reference."
-            ai_message = "I've analyzed your employment issue. Note: our legal database currently covers tenancy and property law. Employment-specific laws have not been ingested yet. The analysis below uses general legal principles."
-            base_readiness = 20
-            coverage = LAW_DOCS_COVERAGE_LIMITED
-            sections = [
-                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.78, "vector_score": 0.75, "bm25_score": 0.72, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive compensation for any loss or damage caused to him thereby."},
-            ]
-            evidence_missing_items = [
-                "Employment contract / appointment letter",
-                "Salary slips for the unpaid months",
-                "Bank statements showing no salary credit",
-                "Email/letter communication with employer about unpaid salary",
-                "Attendance records or timesheets",
-                "ESIC/PF contribution statements (if applicable)",
-                "Witness statements from colleagues",
-            ]
-            evidence_suggestions = [
-                "Get a written employment history letter from HR",
-                "File a complaint with the Labour Commissioner in your state",
-                "Get a legal consultation from an employment lawyer",
-                "Check if your employer has issued a Form 16 for previous tax filings",
-                "Obtain call logs and message backups showing communication with employer",
-            ]
-
-            section_refs = self._build_section_refs(sections)
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Notice for Recovery of Salary Dues", content=(
-
-                    f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
-                    f"TO:\n[Employer/Company Name]\n[Company Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Notice for recovery of unpaid salary amounting to Rs. [Amount]\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"I, [Your Name], was employed as [Designation] at [Company Name] since [Start Date].\n\n"
-                    f"My salary for [Unpaid Period] amounting to Rs. [Amount] has not been credited. "
-                    f"I have made multiple verbal and written requests, but the amount remains unpaid.\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"{section_refs}\n\n"
-                    f"Note: The Payment of Wages Act, 1936 and Industrial Disputes Act, 1947 are the primary laws "
-                    f"governing this matter, but they have not yet been ingested into our database. "
-                    f"The above contract law provision is provided as a general reference. "
-                    f"Please consult an employment lawyer for specific labor law advice.\n\n"
-                    f"You are hereby called upon to pay the full outstanding amount of Rs. [Amount] within 7 days.\n\n"
-                    f"In case of non-compliance:\n"
-                    f"1. A complaint will be filed before the Labour Commissioner;\n"
-                    f"2. Criminal proceedings under Section 406 IPC may be initiated;\n"
-                    f"3. A civil suit for recovery will be filed with interest and costs.\n\n"
-                    f"Yours faithfully,\n[Your Name]\n[Phone Number]"
-                )),
-            ]
-            steps = [
-                ActionStep(number=1, text="Send a formal notice to your employer demanding unpaid salary within 7 days", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Salary Demand Notice"}, status="pending"),
-                ActionStep(number=2, text="File a complaint with the Labour Commissioner under the Payment of Wages Act", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=3, text="Consult an employment lawyer since our database lacks employment-specific laws. Ask: 'Is this a criminal breach of trust under Section 406 IPC?'; 'What is the procedure before the Labour Commissioner?'; 'Can I claim interest on delayed wages?'", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=4, text="File a civil suit for recovery of unpaid wages with interest and legal costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Civil Suit"}, status="pending"),
-            ]
-            recommended = [
-                "Send a legal notice to your employer via registered post and email immediately",
-                "Collect: appointment letter, salary slips, bank statements, emails about unpaid salary, attendance records",
-                "File a complaint with the Labour Commissioner in your state",
-                "Consult an employment lawyer — our database lacks employment-specific laws, so professional advice is critical",
-                "Preserve all communication — do not delete emails, WhatsApp messages, or call logs with your employer",
-            ]
-
         else:
-            case_type = "other"
-            legal_domain = "Civil"
-            severity = "low"
-            risk = "low"
-            summary = "Your legal matter has been reviewed. Based on the limited information provided, here is a general assessment. Our database currently only has tenancy/property law documents."
-            ai_message = "I've reviewed what you've shared. Our legal database currently covers tenancy and property law. Your case type may not be fully covered. Consider consulting a lawyer for specific advice."
-            base_readiness = 10
-            coverage = LAW_DOCS_COVERAGE_LIMITED
-            sections = []
-            evidence_missing_items = [
-                "Detailed description of the incident/problem",
-                "Any documents or records related to the matter",
-                "Communication records with the other party",
-                "Timeline of events",
-                "Witness information (if applicable)",
-                "Previous legal notices or court orders (if any)",
-            ]
-            evidence_suggestions = [
-                "Create a written timeline of all events with dates",
-                "Collect all related documents, emails, and messages",
-                "Get a legal consultation from a lawyer in the relevant practice area",
-                "Check if the matter is covered by any specific statute of limitations",
-                "Obtain a notarized affidavit describing the incident if applicable",
-            ]
-
-            other_docs = [
-                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="General Legal Notice", content=(
-
-                    f"LEGAL NOTICE\n\n"
-                    f"TO:\n[Recipient Name]\n[Address]\n\n"
-                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                    f"Date: {now_str}\n\n"
-                    f"SUBJECT: Legal notice\n\n"
-                    f"Dear Sir/Madam,\n\n"
-                    f"I, [Your Name], hereby serve this legal notice upon you.\n\n"
-                    f"[Describe the issue briefly]\n\n"
-                    f"LEGAL GROUNDS:\n"
-                    f"Note: Our database currently contains the following law documents: "
-                    + ", ".join(AVAILABLE_LAW_DOCS) + ". "
-                    f"Your case type does not clearly match these. The applicable laws may fall outside "
-                    f"our current knowledge base. Please consult a qualified legal professional.\n\n"
-                    f"You are called upon to respond to the above matter within 15 days, failing which "
-                    f"I shall initiate appropriate legal proceedings.\n\n"
-                    f"Yours faithfully,\n[Your Name]"
-                )),
-            ]
-            steps = [
-                ActionStep(number=1, text="Document a detailed timeline of events including dates, persons involved, and key facts", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=2, text="Gather all related documents, correspondence, and evidence", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=3, text="Consult a lawyer in the relevant area of law. Our database only covers tenancy/property — ask: 'What legal provisions apply to my situation?'; 'What is the limitation period?'; 'What evidence is essential?'", action_type="info_gathering", action_config={}, status="pending"),
-                ActionStep(number=4, text="Send a legal notice to the opposing party once you have a clearer picture", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Legal Notice"}, status="pending"),
-            ]
-            recommended = [
-                "Create a detailed written timeline of all events related to your issue",
-                "Collect all documents, emails, messages, and records related to the matter",
-                "Consult a lawyer — ask about: applicable laws, limitation periods, evidence requirements, and potential remedies",
-                "Send a formal legal notice to the opposing party once you understand your legal position",
-                "Do not destroy any evidence — preserve messages, emails, documents, and photographs",
-            ]
+            # Consumer, employment, and unrecognized case types — not in knowledge base
+            domain_map = {"consumer_dispute": "Consumer Protection", "employment_dispute": "Employment", "other": "Civil"}
+            type_map = {"consumer_dispute": "consumer", "employment_dispute": "employment", "other": "this type of"}
+            case_type = "consumer_dispute" if is_consumer else ("employment_dispute" if is_employment else "other")
+            return AnalyzeResponseDTO(
+                case_type=case_type,
+                severity="low",
+                legal_domain=domain_map.get(case_type, "Civil"),
+                relevant_sections=[],
+                legal_notice_draft="",
+                other_documents=[],
+                summary="",
+                next_steps=[],
+                reasoning_trace="[mock] Case type not in knowledge base",
+                clarifying_questions=[],
+                action_buttons=[],
+                ai_message=f"Sorry, the laws for {type_map.get(case_type, 'this')} cases are currently not in our database. I can only assist with tenancy-related matters (landlord-tenant disputes, security deposit recovery, eviction, etc.) using the ingested laws.",
+                case_readiness_score=0,
+                evidence_available=[],
+                evidence_missing=[],
+                evidence_suggestions=[],
+                risk_level="low",
+                recommended_actions=[],
+                is_sufficient=False,
+                law_docs_available=AVAILABLE_LAW_DOCS,
+                law_docs_coverage=LAW_DOCS_COVERAGE_LIMITED,
+            )
 
         # ── Extract case info from description for document filling ────
         info = self._extract_case_info(description)
@@ -624,74 +451,22 @@ class AgentService:
 
         readiness = min(100, base_readiness + detail_score + evidence_score)
 
-        # ── Generate legal notice draft (no EVIDENCE STATUS, no DRAFT disclaimer) ──
-        if case_type == "tenancy_dispute":
-            notice_content = (
-                f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
-                f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I, [Your Name], was a tenant at your property located at [Property Address] "
-                f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
-                f"LEGAL GROUNDS (from database search):\n"
-                f"{section_refs}\n\n"
-                f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
-                f"within 15 days, failing which legal proceedings will be initiated.\n\n"
-                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-            )
-        elif case_type == "consumer_dispute":
-            notice_content = (
-                f"LEGAL NOTICE FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
-                f"TO:\n[Recipient Name]\n[Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Legal notice for defective goods / deficient services\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I purchased [Product/Service] from you for Rs. [Amount]. "
-                f"The product is defective / service is deficient.\n\n"
-                f"LEGAL GROUNDS:\n"
-                f"{section_refs}\n\n"
-                f"Note: The Consumer Protection Act, 2019 is the primary law but has not been ingested "
-                f"into our database yet. Please consult a consumer lawyer.\n\n"
-                f"YOU ARE HEREBY CALLED UPON to replace/refund within 15 days.\n\n"
-                f"Yours faithfully,\n[Your Name]"
-            )
-        elif case_type == "employment_dispute":
-            notice_content = (
-                f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
-                f"TO:\n[Company Name]\n[Company Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Notice for recovery of unpaid salary of Rs. [Amount]\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I was employed as [Designation] at [Company Name] since [Start Date]. "
-                f"My salary of Rs. [Amount] remains unpaid.\n\n"
-                f"LEGAL GROUNDS:\n"
-                f"{section_refs}\n\n"
-                f"Note: The Payment of Wages Act, 1936 and Industrial Disputes Act, 1947 are the primary laws "
-                f"but have not been ingested into our database. Please consult an employment lawyer.\n\n"
-                f"YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] within 7 days.\n\n"
-                f"Yours faithfully,\n[Your Name]"
-            )
-        else:
-            notice_content = (
-                f"LEGAL NOTICE\n\n"
-                f"TO:\n[Recipient Name]\n[Address]\n\n"
-                f"FROM:\n[Your Name]\n[Your Address]\n\n"
-                f"Date: {now_str}\n\n"
-                f"SUBJECT: Legal notice\n\n"
-                f"Dear Sir/Madam,\n\n"
-                f"I, [Your Name], hereby serve this legal notice upon you.\n\n"
-                f"[Describe the issue briefly]\n\n"
-                f"LAW DOCUMENTS AVAILABLE IN DATABASE:\n"
-                + "\n".join(f"- {d}" for d in AVAILABLE_LAW_DOCS) + "\n\n"
-                f"Your case type does not clearly match our current knowledge base. "
-                f"Please consult a qualified legal professional.\n\n"
-                f"You are called upon to respond within 15 days.\n\n"
-                f"Yours faithfully,\n[Your Name]"
-            )
+        # ── Generate legal notice draft ──
+        notice_content = (
+            f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
+            f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+            f"FROM:\n[Your Name]\n[Your Address]\n\n"
+            f"Date: {now_str}\n\n"
+            f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
+            f"Dear Sir/Madam,\n\n"
+            f"I, [Your Name], was a tenant at your property located at [Property Address] "
+            f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
+            f"LEGAL GROUNDS (from database search):\n"
+            f"{section_refs}\n\n"
+            f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
+            f"within 15 days, failing which legal proceedings will be initiated.\n\n"
+            f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+        )
 
         # Render ready-to-use documents — fill placeholders, strip evidence/draft boilerplate
         notice = self._render_doc_template(notice_content, info)
