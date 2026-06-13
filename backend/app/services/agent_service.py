@@ -152,73 +152,11 @@ class AgentService:
 
     async def _run_llm_analysis(self, description: str) -> AnalyzeResponseDTO:
         reasoning_trace = []
+        today = datetime.now(timezone.utc).strftime("%d %B %Y")
 
-        # ── Round 0: Vagueness check ─────────────────────────────────────
-        vague_prompt = (
-            f"Problem: {description}\n\n"
-            f"Determine if this description is too vague to provide meaningful legal advice.\n\n"
-            f"IMPORTANT: Return is_vague: false if the description ANY of these:\n"
-            f"- Mentions who the user is (landlord, tenant, buyer, employer, etc.)\n"
-            f"- Describes what happened or what the problem is\n"
-            f"- Mentions the other party involved\n"
-            f"- Has more than 20 words\n"
-            f"- Mentions evidence, documents, or specific events\n\n"
-            f"Return is_vague: true ONLY if the input is:\n"
-            f"- A single word or less than 10 words\n"
-            f"- Gibberish or test input\n"
-            f"- No clear legal problem described at all\n\n"
-            f"Return ONLY valid JSON:\n"
-            f'{{"is_vague": true/false, '
-            f'"clarifying_questions": [{{"question": "your question here", '
-            f'"key": "short_key_for_this_question"}}]}}'
-            f"\nIf not vague, set clarifying_questions to an empty array."
-        )
-        try:
-            vague_text = await self._call_llm(
-                model=FAST_MODEL,
-                messages=[
-                    {"role": "system", "content": self.legal.system_prompt()},
-                    {"role": "user", "content": vague_prompt},
-                ],
-                max_tokens=1000,
-            )
-            vague_result = _extract_json(vague_text)
-        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError):
-            vague_result = {"is_vague": False, "clarifying_questions": []}
-
-        is_vague = vague_result.get("is_vague", False)
-        vague_questions = vague_result.get("clarifying_questions", [])
-        reasoning_trace.append(
-            f"[check_vagueness] is_vague={is_vague} questions={len(vague_questions)}"
-        )
-
-        if is_vague and vague_questions:
-            return AnalyzeResponseDTO(
-                case_type="other",
-                severity="low",
-                legal_domain="Other",
-                relevant_sections=[],
-                legal_notice_draft="",
-                summary="",
-                next_steps=[],
-                reasoning_trace="\n".join(reasoning_trace),
-                clarifying_questions=[
-                    ClarifyingQuestion(question=q["question"], key=q["key"])
-                    for q in vague_questions
-                ],
-                action_buttons=[],
-                ai_message="I need a bit more information to help you properly. Please answer these questions.",
-                case_readiness_score=0,
-                evidence_available=[],
-                evidence_missing=[],
-                risk_level="low",
-                recommended_actions=[],
-                is_sufficient=False,
-                law_docs_available=AVAILABLE_LAW_DOCS,
-                law_docs_coverage="",
-            )
-
-        # ── Round 1: Classify case ────────────────────────────────────────
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 1: Classify + Vagueness check (parallel, fast model)
+        # ═══════════════════════════════════════════════════════════════════
         classify_prompt = (
             f"Problem: {description}\n\n"
             f"Classify this legal problem into a JSON object:\n"
@@ -228,179 +166,230 @@ class AgentService:
             f'"user_role": "landlord|tenant|employer|employee|buyer|seller|complainant|respondent|other", '
             f'"reasoning": "brief reason"}}'
         )
-        try:
-            classify_text = await self._call_llm(
-                model=FAST_MODEL,
-                messages=[
-                    {"role": "system", "content": self.legal.system_prompt()},
-                    {"role": "user", "content": classify_prompt},
-                ],
-                max_tokens=1000,
-            )
-            classification = _extract_json(classify_text)
-        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError) as e:
-            reasoning_trace.append(f"[classify_case] LLM error: {e}")
-            classification = {
-                "case_type": "other",
-                "severity": "medium",
-                "legal_domain": "Other",
-                "user_role": "other",
-                "reasoning": "Classification failed",
-            }
-
-        reasoning_trace.append(f"[classify_case] -> {classification}")
-
-        # ── Round 2: Search law via RAG ───────────────────────────────────
-        search_prompt = (
-            f"Case: {classification.get('case_type')} ({classification.get('severity')}). "
-            f"Role: {classification.get('user_role', 'unknown')}. "
-            f"{classification.get('reasoning', '')}\n\n"
-            f"What specific search query should be used to find relevant Indian law sections?\n\n"
-            f"Output a JSON object:\n"
-            f'{{"query": "specific legal search terms"}}'
+        vague_prompt = (
+            f"Problem: {description}\n\n"
+            f"Is this too vague for legal advice? Return JSON:\n"
+            f'{{"is_vague": true/false, "clarifying_questions": [{{"question": "...", "key": "..."}}]}}\n'
+            f"Return is_vague: false if it mentions who the user is, what happened, or has 20+ words."
         )
+
+        # Run classify and vagueness in parallel
+        classify_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": classify_prompt},
+        ], 1000)
+        vague_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": vague_prompt},
+        ], 1000)
+
+        classify_text, vague_text = await asyncio.gather(classify_task, vague_task)
+
         try:
-            search_text = await self._call_llm(
-                model=FAST_MODEL,
-                messages=[
-                    {"role": "system", "content": self.legal.system_prompt()},
-                    {"role": "user", "content": classify_prompt},
-                    {"role": "assistant", "content": classify_text},
-                    {"role": "user", "content": search_prompt},
-                ],
-                max_tokens=1000,
+            classification = _extract_json(classify_text)
+        except ValueError:
+            classification = {"case_type": "other", "severity": "medium", "legal_domain": "Other", "user_role": "other", "reasoning": "Failed"}
+
+        try:
+            vague_result = _extract_json(vague_text)
+        except ValueError:
+            vague_result = {"is_vague": False, "clarifying_questions": []}
+
+        is_vague = vague_result.get("is_vague", False)
+        vague_questions = vague_result.get("clarifying_questions", [])
+        reasoning_trace.append(f"[classify] {classification.get('case_type')} / {classification.get('user_role')}")
+
+        if is_vague and vague_questions:
+            return AnalyzeResponseDTO(
+                case_type="other", severity="low", legal_domain="Other",
+                relevant_sections=[], summary=[], next_steps=[],
+                reasoning_trace="\n".join(reasoning_trace),
+                clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions],
+                ai_message="I need more information. Please answer these questions.",
+                case_readiness_score=0, is_sufficient=False,
+                law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
             )
-            search_args = _extract_json(search_text)
-            query = search_args.get("query", description)
-        except (ValueError, RateLimitError, APITimeoutError, APIConnectionError):
-            query = description
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 2: Search RAG for relevant laws
+        # ═══════════════════════════════════════════════════════════════════
+        query = description  # default: use raw description
+        try:
+            search_text = await self._call_llm(FAST_MODEL, [
+                {"role": "system", "content": self.legal.system_prompt()},
+                {"role": "user", "content": f"Given this legal case: {description}\n\nReturn ONLY a JSON: {{\"query\": \"search terms for Indian law\"}}"},
+            ], 500)
+            query = _extract_json(search_text).get("query", description)
+        except ValueError:
+            pass
 
         try:
             law_sections = await self.rag.search(query=query, top_k=5)
         except Exception as e:
-            reasoning_trace.append(f"[search_law] RAG error: {e}")
+            reasoning_trace.append(f"[rag] error: {e}")
             law_sections = []
 
-        reasoning_trace.append(f"[search_law: '{query}'] -> {len(law_sections)} results")
+        reasoning_trace.append(f"[rag] query='{query}' -> {len(law_sections)} results")
 
-        # ── Round 3: Generate full analysis via LLM ───────────────────────
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 3: Generate all parts in PARALLEL (small individual calls)
+        # ═══════════════════════════════════════════════════════════════════
         section_refs = self._build_section_refs(law_sections)
-        today = datetime.now(timezone.utc).strftime("%d %B %Y")
+        case_type = classification.get("case_type", "other")
+        user_role = classification.get("user_role", "other")
+        severity = classification.get("severity", "medium")
+        legal_domain = classification.get("legal_domain", "")
 
-        steps_prompt = (
-            f"Problem: {description}\n\n"
-            f"Classification: {json.dumps(classification, indent=2)}\n\n"
-            f"Relevant laws found in database:\n{section_refs}\n\n"
-            f"Raw law sections data:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
-            f"Today's date: {today}\n\n"
-            f"Generate a complete legal analysis as JSON. Prefix with 'FINAL_JSON:' then the JSON. No markdown.\n\n"
-            f"IMPORTANT INSTRUCTIONS:\n"
-            f"- You are generating documents for the USER described above. Determine from the description who the user is (landlord, tenant, buyer, employee, etc.) and generate ALL documents from THEIR perspective.\n"
-            f"- Do NOT assume the user is always a tenant. Read the description carefully.\n"
-            f"- The legal_notice_draft, demand_letter, and complaint MUST be written FROM the user TO the opposing party.\n"
-            f"- All documents must reference the actual law sections found above.\n"
-            f"- The case_readiness_score must be BRUTALLY HONOR: 0-10 = vague one-liner, 15-30 = short with some detail, 30-50 = detailed with clear facts, 50-80 = detailed + confirmed evidence, 80-100 = fully documented with all evidence.\n"
-            f"- evidence_missing should list evidence the user STILL NEEDS to collect, specific to this case type and the user's role.\n"
-            f"- evidence_suggestions should list additional actions to strengthen the case.\n"
-            f"- next_steps should be a concrete action plan with numbered steps. Each step must have: number, text, action_type ('generate_document'|'info_gathering'|'wait'), and action_config ({{doc_type: '...', title: '...'}} if generate_document).\n\n"
-            f"Keys:\n"
-            f'  "ai_message" — warm conversational message (2-3 sentences) acknowledging the user\'s role and situation\n'
-            f'  "summary" — case summary and recommended approach (2-3 sentences)\n'
-            f'  "next_steps" — array of {{number: int, text: str, action_type: str, action_config: {{doc_type: str, title: str}}}}\n'
-            f'  "legal_notice_draft" — plain text. Complete formal legal notice. FROM the user TO the opposing party. Indian legal format.\n'
-            f'  "other_documents" — array of {{doc_type: str, title: str, content: str}} for additional documents (demand letter, complaint, etc.)\n'
-            f'  "case_readiness_score" — integer 0-100 (BRUTALLY HONEST)\n'
-            f'  "evidence_available" — array of strings (evidence user likely already has based on description)\n'
-            f'  "evidence_missing" — array of strings (evidence user still needs, specific to this case)\n'
-            f'  "evidence_suggestions" — array of strings (additional actions to strengthen the case)\n'
-            f'  "risk_level" — "low"|"medium"|"high"\n'
-            f'  "recommended_actions" — array of plain text action recommendations\n'
+        base_context = (
+            f"Case: {description}\n"
+            f"Type: {case_type} | Role: {user_role} | Severity: {severity}\n"
+            f"Laws:\n{section_refs}\n"
+            f"Date: {today}\n"
         )
 
-        final_text = await self._call_llm(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": self.legal.system_prompt()},
-                {"role": "user", "content": steps_prompt},
-            ],
-            max_tokens=12000,
+        # --- Call A: Evidence + Readiness + Summary + Risk ---
+        evidence_prompt = (
+            f"{base_context}\n"
+            f"Return ONLY valid JSON with these keys:\n"
+            f'{{"summary": "2-3 sentence case summary", '
+            f'"ai_message": "warm 2-3 sentence message to the user", '
+            f'"evidence_missing": ["evidence item 1", ...], '
+            f'"evidence_suggestions": ["suggestion 1", ...], '
+            f'"evidence_available": ["likely evidence 1", ...], '
+            f'"case_readiness_score": 0-100, '
+            f'"risk_level": "low|medium|high", '
+            f'"recommended_actions": ["action 1", ...]}}\n'
+            f"Readiness: 0-10 vague, 15-30 short, 30-50 detailed, 50-80+detailed with evidence, 80-100 fully documented."
         )
 
-        marker = "FINAL_JSON:"
-        idx = final_text.rfind(marker)
-        if idx >= 0:
-            final_data = _extract_json(final_text[idx + len(marker) :])
-        else:
-            final_data = _extract_json(final_text)
+        # --- Call B: Legal Notice ---
+        notice_prompt = (
+            f"{base_context}\n"
+            f"Generate a formal LEGAL NOTICE in Indian legal format.\n"
+            f"Write FROM the user ({user_role}) TO the opposing party.\n"
+            f"Include: TO, FROM, Date, Subject, body with legal grounds, demand clause, signature.\n"
+            f"Reference the law sections above. Be specific to this case.\n"
+            f"Return ONLY the plain text of the legal notice. No JSON."
+        )
 
-        reasoning_trace.append(f"[llm_analysis] keys={list(final_data.keys())}")
+        # --- Call C: Other Documents (demand letter + complaint) ---
+        docs_prompt = (
+            f"{base_context}\n"
+            f"Generate TWO documents as JSON:\n"
+            f'1. A formal DEMAND LETTER from the {user_role} to the opposing party.\n'
+            f"2. A COMPLAINT/PETITION for filing with the appropriate authority.\n"
+            f"Both must reference the law sections above and be specific to this case.\n"
+            f"Return ONLY valid JSON:\n"
+            f'{{"other_documents": [{{"doc_type": "demand_letter", "title": "...", "content": "..."}}, {{"doc_type": "complaint", "title": "...", "content": "..."}}]}}'
+        )
 
-        # Parse steps
-        steps_data = final_data.get("next_steps", final_data.get("steps", []))
-        action_steps = []
-        for s in steps_data:
-            action_steps.append(
-                ActionStep(
-                    number=s.get("number", 1),
-                    text=s.get("text", ""),
-                    action_type=s.get("action_type", "info_gathering"),
-                    action_config=s.get("action_config", {}),
-                    status="pending",
-                )
-            )
+        # --- Call D: Action Plan ---
+        plan_prompt = (
+            f"{base_context}\n"
+            f"Generate a concrete action plan as JSON.\n"
+            f"Each step: number, text, action_type ('generate_document'|'info_gathering'|'wait'), action_config ({{doc_type, title}} if generate_document).\n"
+            f"Return ONLY valid JSON:\n"
+            f'{{"next_steps": [{{"number": 1, "text": "...", "action_type": "...", "action_config": {{}}}}], '
+            f'"action_buttons": [{{"label": "...", "message": "...", "style": "primary"}}]}}'
+        )
+
+        # Fire all 4 in parallel
+        notice_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": notice_prompt},
+        ], 4000)
+
+        evidence_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": evidence_prompt},
+        ], 2000)
+
+        docs_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": docs_prompt},
+        ], 6000)
+
+        plan_task = self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": plan_prompt},
+        ], 2000)
+
+        notice_text, evidence_text, docs_text, plan_text = await asyncio.gather(
+            notice_task, evidence_task, docs_task, plan_task
+        )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 4: Parse all results
+        # ═══════════════════════════════════════════════════════════════════
+        # Parse evidence/summary
+        try:
+            evidence_data = _extract_json(evidence_text)
+        except ValueError:
+            evidence_data = {}
+
+        # Parse legal notice (plain text, no JSON)
+        legal_notice = notice_text.strip()
 
         # Parse other documents
-        other_docs_raw = final_data.get("other_documents", [])
-        other_documents = []
-        for doc in other_docs_raw:
-            other_documents.append(
-                DocumentDTO(
-                    id=_generate_doc_id(),
-                    case_id="",
-                    doc_type=doc.get("doc_type", "document"),
-                    title=doc.get("title", "Legal Document"),
-                    content=doc.get("content", ""),
-                    status="draft",
-                )
-            )
+        try:
+            docs_data = _extract_json(docs_text)
+        except ValueError:
+            docs_data = {}
 
-        # Clarifying questions from both rounds
-        clarifying_questions = [
-            ClarifyingQuestion(question=q.get("question", ""), key=q.get("key", ""))
-            for q in vague_questions
+        other_documents = []
+        for doc in docs_data.get("other_documents", []):
+            other_documents.append(DocumentDTO(
+                id=_generate_doc_id(), case_id="",
+                doc_type=doc.get("doc_type", "document"),
+                title=doc.get("title", "Legal Document"),
+                content=doc.get("content", ""), status="draft",
+            ))
+
+        # Parse action plan
+        try:
+            plan_data = _extract_json(plan_text)
+        except ValueError:
+            plan_data = {}
+
+        action_steps = []
+        for s in plan_data.get("next_steps", []):
+            action_steps.append(ActionStep(
+                number=s.get("number", 1),
+                text=s.get("text", ""),
+                action_type=s.get("action_type", "info_gathering"),
+                action_config=s.get("action_config", {}),
+                status="pending",
+            ))
+
+        action_buttons = [
+            ActionButton(label=ab.get("label", ""), message=ab.get("message", ""), style=ab.get("style", "default"))
+            for ab in plan_data.get("action_buttons", [])
         ]
 
+        reasoning_trace.append(f"[done] notice={len(legal_notice)} chars, docs={len(other_documents)}, steps={len(action_steps)}")
+
         return AnalyzeResponseDTO(
-            case_type=final_data.get("case_type", classification.get("case_type", "other")),
-            severity=final_data.get("severity", classification.get("severity", "medium")),
-            legal_domain=final_data.get("legal_domain", classification.get("legal_domain", "")),
+            case_type=case_type,
+            severity=severity,
+            legal_domain=legal_domain,
             relevant_sections=law_sections,
-            legal_notice_draft=final_data.get("legal_notice_draft", ""),
+            legal_notice_draft=legal_notice,
             other_documents=other_documents,
-            summary=final_data.get("summary", ""),
+            summary=evidence_data.get("summary", ""),
             next_steps=action_steps,
             reasoning_trace="\n".join(reasoning_trace),
-            clarifying_questions=clarifying_questions,
-            action_buttons=[
-                ActionButton(
-                    label="Download Documents",
-                    message="Download all generated documents",
-                    style="primary",
-                )
-            ],
-            ai_message=final_data.get(
-                "ai_message",
-                "I've analyzed your case. Here's a step-by-step plan to help you resolve this matter.",
-            ),
-            case_readiness_score=final_data.get("case_readiness_score", 0),
-            evidence_available=final_data.get("evidence_available", []),
-            evidence_missing=final_data.get("evidence_missing", []),
-            evidence_suggestions=final_data.get("evidence_suggestions", []),
-            risk_level=final_data.get("risk_level", "medium"),
-            recommended_actions=final_data.get("recommended_actions", []),
+            clarifying_questions=[ClarifyingQuestion(question=q.get("question", ""), key=q.get("key", "")) for q in vague_questions],
+            action_buttons=action_buttons or [ActionButton(label="Download Documents", message="Download all generated documents", style="primary")],
+            ai_message=evidence_data.get("ai_message", "I've analyzed your case. Here's a step-by-step plan to help you resolve this matter."),
+            case_readiness_score=evidence_data.get("case_readiness_score", 0),
+            evidence_available=evidence_data.get("evidence_available", []),
+            evidence_missing=evidence_data.get("evidence_missing", []),
+            evidence_suggestions=evidence_data.get("evidence_suggestions", []),
+            risk_level=evidence_data.get("risk_level", "medium"),
+            recommended_actions=evidence_data.get("recommended_actions", []),
             is_sufficient=True,
             law_docs_available=AVAILABLE_LAW_DOCS,
-            law_docs_coverage=self._get_coverage(classification.get("case_type", "other")),
+            law_docs_coverage=self._get_coverage(case_type),
         )
 
     def _get_coverage(self, case_type: str) -> str:
