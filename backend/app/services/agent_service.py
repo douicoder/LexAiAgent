@@ -268,21 +268,23 @@ class AgentService:
 
     def _generate_documents(self, description: str, sections: list[dict], section_refs: str,
                             ev_available: list[str], ev_missing: list[str],
-                            evidence_missing_items: list[str], now_str: str) -> tuple[str, list[DocumentDTO]]:
+                            evidence_missing_items: list[str], now_str: str,
+                            user_role: str = "tenant") -> tuple[str, list[DocumentDTO]]:
         has_evidence = len(ev_available) > 0
 
         if has_evidence:
             evidence_summary = (
-                f"The complainant has gathered the following evidence to support this claim:\n"
+                f"The {'complainant' if user_role == 'tenant' else 'applicant'} has gathered the following evidence to support this claim:\n"
                 + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(ev_available))
             )
             if ev_missing:
                 evidence_summary += (
-                    f"\n\nThe complainant is in the process of obtaining the following additional evidence:\n"
+                    f"\n\nThe {'complainant' if user_role == 'tenant' else 'applicant'} is in the process of obtaining the following additional evidence:\n"
                     + "\n".join(f"  {len(ev_available)+i+1}. {item}" for i, item in enumerate(ev_missing))
                 )
             strength_note = (
-                "The presence of this documented evidence significantly strengthens the complainant's position "
+                "The presence of this documented evidence significantly strengthens the "
+                f"{'complainant' if user_role == 'tenant' else 'applicant'}'s position "
                 "and establishes a clear factual basis for the claims made herein."
             )
         else:
@@ -291,149 +293,282 @@ class AgentService:
                 + "\n".join(f"  {i+1}. {item}" for i, item in enumerate(evidence_missing_items))
             )
             strength_note = (
-                "The complainant acknowledges that gathering the above evidence is critical to "
+                f"The {'complainant' if user_role == 'tenant' else 'applicant'} acknowledges that gathering the above evidence is critical to "
                 "strengthening the case before proceeding with formal legal action."
             )
 
-        notice_content = (
-            f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
-            f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
-            f"FROM:\n[Your Name]\n[Your Address]\n\n"
-            f"Date: {now_str}\n\n"
-            f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
-            f"Dear Sir/Madam,\n\n"
-            f"I, [Your Name], was a tenant at your property located at [Property Address] "
-            f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
-            f"LEGAL GROUNDS (from database search):\n"
-            f"{section_refs}\n\n"
-            f"{evidence_summary}\n\n"
-            f"{strength_note}\n\n"
-            f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
-            f"within 15 days, failing which legal proceedings will be initiated.\n\n"
-            f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-        )
+        if user_role == "landlord":
+            notice_content = (
+                f"LEGAL NOTICE FOR RECOVERY OF DAMAGES FROM TENANT\n\n"
+                f"TO:\n[Tenant's Name]\n[Tenant's Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Legal notice demanding compensation for intentional property damage\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"I, [Your Name], am the owner of the property located at [Property Address] "
+                f"which was let out to you under a rental agreement dated [Start Date].\n\n"
+                f"It has come to my attention that you have intentionally caused damage to the said property, "
+                f"including but not limited to: broken fixtures, damaged walls, and destruction of landlord-provided "
+                f"appliances and fittings. This conduct constitutes a clear breach of the rental agreement and the "
+                f"obligations under the Transfer of Property Act, 1882.\n\n"
+                f"LEGAL GROUNDS (from database search):\n"
+                f"{section_refs}\n\n"
+                f"{evidence_summary}\n\n"
+                f"{strength_note}\n\n"
+                f"YOU ARE HEREBY CALLED UPON to pay compensation of Rs. [Amount] for the damages caused "
+                f"within 15 days of receipt of this notice, failing which legal proceedings will be initiated "
+                f"without further notice.\n\n"
+                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+            )
 
-        other_docs = [
-            DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
-                f"FORMAL DEMAND LETTER\n"
-                f"==============================\n\n"
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Damages", content=(
+                    f"FORMAL DEMAND LETTER FOR PROPERTY DAMAGE\n"
+                    f"==============================\n\n"
+                    f"TO:\n[Tenant's Name]\n[Tenant's Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Formal demand for compensation for intentional property damage\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"This is a formal demand for the immediate compensation for damages caused to my property "
+                    f"at [Property Address] during your tenancy.\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"Your intentional damage to the property is contrary to the following laws:\n"
+                    f"{section_refs}\n\n"
+                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
+                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which establishes "
+                    f"the tenant's obligation to maintain the property. The {sections[1]['act']} Section {sections[1]['section_number']} "
+                    f"({round(sections[1]['score']*100)}% relevance) provides for compensation for breach of contract.\n\n"
+                    f"{evidence_summary}\n\n"
+                    f"{strength_note}\n\n"
+                    f"DEMAND:\n"
+                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
+                    f"Failure to comply will result in immediate legal proceedings to recover the damages plus "
+                    f"interest and costs.\n\n"
+                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+                )),
+                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint Against Tenant for Property Damage", content=(
+                    f"COMPLAINT BEFORE THE RENT CONTROLLER / CIVIL COURT\n"
+                    f"==============================\n\n"
+                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
+                    f"COMPLAINT NO: _____\n\n"
+                    f"IN THE MATTER OF:\n[Your Name] … Complainant (Landlord)\nVS\n[Tenant's Name] … Respondent (Tenant)\n\n"
+                    f"MOST RESPECTFULLY SHOWETH:\n\n"
+                    f"1. The complainant is the owner of the property located at [Property Address].\n"
+                    f"2. The respondent was a tenant at the said property from [Start Date] to [End Date].\n"
+                    f"3. The respondent, during the course of tenancy, intentionally damaged the property, "
+                    f"causing destruction to fixtures, fittings, and landlord-provided appliances.\n"
+                    f"4. The damage was not caused by normal wear and tear but by deliberate and intentional acts.\n"
+                    f"5. The complainant has evidence including photographs, video recordings, and camera footage "
+                    f"showing the respondent causing the damage.\n"
+                    f"6. The respondent has refused to compensate for the damages despite repeated demands.\n\n"
+                    f"LEGAL PROVISIONS INVOKED:\n"
+                    f"This complaint is grounded in the following legal provisions:\n"
+                    f"{section_refs}\n\n"
+                    f"The respondent's actions constitute:\n"
+                    f"a) Breach of rental agreement under {sections[0]['act']} Section {sections[0]['section_number']} "
+                    f"({sections[0]['section_title']}) — the tenant failed to maintain the property.\n"
+                    f"b) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
+                    f"({sections[1]['section_title']}) — the respondent is liable to pay compensation.\n"
+                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the tenant's "
+                    f"obligation to restore the premises in good condition.\n\n"
+                    f"EVIDENCE RELIED UPON:\n"
+                    f"{evidence_summary}\n\n"
+                    f"{strength_note}\n\n"
+                    f"PRAYER:\n"
+                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
+                    f"a) Direct the respondent to pay compensation of Rs. [Amount] for the damages caused to the property.\n"
+                    f"b) Award interest at 18% per annum from the date of damage.\n"
+                    f"c) Award costs of the proceedings.\n"
+                    f"d) Pass any other order deemed fit.\n\n"
+                    f"Complainant\n[Your Name]\n[Date]"
+                )),
+            ]
+        else:
+            notice_content = (
+                f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
                 f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
                 f"FROM:\n[Your Name]\n[Your Address]\n\n"
                 f"Date: {now_str}\n\n"
-                f"SUBJECT: Formal demand for refund of security deposit\n\n"
+                f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
                 f"Dear Sir/Madam,\n\n"
-                f"This is a formal demand for the immediate refund of my security deposit. "
-                f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
-                f"LEGAL GROUNDS:\n"
-                f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
+                f"I, [Your Name], was a tenant at your property located at [Property Address] "
+                f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
+                f"LEGAL GROUNDS (from database search):\n"
                 f"{section_refs}\n\n"
-                f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
-                f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
-                f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
-                f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
                 f"{evidence_summary}\n\n"
                 f"{strength_note}\n\n"
-                f"DEMAND:\n"
-                f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
-                f"Failure to comply will result in immediate legal proceedings.\n\n"
+                f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
+                f"within 15 days, failing which legal proceedings will be initiated.\n\n"
                 f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
-            )),
-            DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
-                f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
-                f"==============================\n\n"
-                f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
-                f"COMPLAINT NO: _____\n\n"
-                f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
-                f"MOST RESPECTFULLY SHOWETH:\n\n"
-                f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
-                f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
-                f"3. The complainant vacated the premises on [Date] after proper notice.\n"
-                f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
-                f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
-                f"LEGAL PROVISIONS INVOKED:\n"
-                f"This complaint is grounded in the following legal provisions identified through database search:\n"
-                f"{section_refs}\n\n"
-                f"The respondent's actions constitute:\n"
-                f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
-                f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
-                f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
-                f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
-                f"law provision governing security deposit refunds.\n"
-                f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
-                f"EVIDENCE RELIED UPON:\n"
-                f"{evidence_summary}\n\n"
-                f"{strength_note}\n\n"
-                f"PRAYER:\n"
-                f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
-                f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
-                f"b) Award costs of the proceedings.\n"
-                f"c) Pass any other order deemed fit.\n\n"
-                f"Complainant\n[Your Name]\n[Date]"
-            )),
-        ]
+            )
+
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
+                    f"FORMAL DEMAND LETTER\n"
+                    f"==============================\n\n"
+                    f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Formal demand for refund of security deposit\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"This is a formal demand for the immediate refund of my security deposit. "
+                    f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
+                    f"{section_refs}\n\n"
+                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
+                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
+                    f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
+                    f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
+                    f"{evidence_summary}\n\n"
+                    f"{strength_note}\n\n"
+                    f"DEMAND:\n"
+                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
+                    f"Failure to comply will result in immediate legal proceedings.\n\n"
+                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+                )),
+                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
+                    f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
+                    f"==============================\n\n"
+                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
+                    f"COMPLAINT NO: _____\n\n"
+                    f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
+                    f"MOST RESPECTFULLY SHOWETH:\n\n"
+                    f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
+                    f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
+                    f"3. The complainant vacated the premises on [Date] after proper notice.\n"
+                    f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
+                    f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
+                    f"LEGAL PROVISIONS INVOKED:\n"
+                    f"This complaint is grounded in the following legal provisions identified through database search:\n"
+                    f"{section_refs}\n\n"
+                    f"The respondent's actions constitute:\n"
+                    f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
+                    f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
+                    f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
+                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
+                    f"law provision governing security deposit refunds.\n"
+                    f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
+                    f"EVIDENCE RELIED UPON:\n"
+                    f"{evidence_summary}\n\n"
+                    f"{strength_note}\n\n"
+                    f"PRAYER:\n"
+                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
+                    f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
+                    f"b) Award costs of the proceedings.\n"
+                    f"c) Pass any other order deemed fit.\n\n"
+                    f"Complainant\n[Your Name]\n[Date]"
+                )),
+            ]
 
         return notice_content, other_docs
 
-    def _generate_action_plan(self, description: str, ev_available: list[str], ev_missing: list[str], all_items: list[str]) -> tuple[list[ActionStep], list[str]]:
+    def _generate_action_plan(self, description: str, ev_available: list[str], ev_missing: list[str],
+                              all_items: list[str], user_role: str = "tenant") -> tuple[list[ActionStep], list[str]]:
         desc_lower = description.lower()
         steps = []
         num = 1
 
-        # Evidence collection steps — personalized per missing item
-        ev_prompts = {
-            "Rental agreement / lease contract": "Locate your rental agreement or request a copy from the landlord",
-            "Deposit payment receipt or bank transfer record": "Obtain bank statements showing the security deposit transaction",
-            "Written communication with landlord about the deposit": "Gather all emails, messages, or letters exchanged with the landlord about the deposit",
-            "Photographs/video of apartment condition at move-in and move-out": "Collect dated photographs or video of the property condition at move-in and move-out",
-            "Any repair bills or damage estimates the landlord claims": "Request written repair estimates or bills for any damages the landlord alleges",
-            "Move-out inspection report (if any)": "Obtain the move-out inspection report from the landlord or building manager",
-            "Witness statements from neighbours or building staff": "Speak to neighbours or building staff willing to provide written statements about the property condition",
-        }
+        if user_role == "landlord":
+            # Landlord-specific evidence collection prompts
+            ev_prompts = {
+                "Copy of the signed lease/rental agreement": "Locate the signed rental agreement showing tenant obligations",
+                "Photographs or video of property damage (before and after)": "Compile dated photographs showing property condition before and after the damage",
+                "Camera footage showing tenant causing damage": "Export and preserve camera/surveillance footage showing the tenant causing damage",
+                "Written repair estimates or invoices for damage修复": "Obtain written repair estimates from contractors for all damaged items",
+                "Written communication with tenant about the damage": "Gather all emails, messages, or letters exchanged with the tenant about the property damage",
+                "Move-in condition report or photographs": "Retrieve the move-in inspection report or initial photographs showing property condition",
+                "Witness statements from neighbours or building staff": "Speak to neighbours or building staff who can testify to the tenant's conduct",
+            }
 
-        # For items still missing, add a collection step
-        for item in ev_missing:
-            prompt = ev_prompts.get(item, f"Collect the following: {item}")
-            steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
+            for item in ev_missing:
+                prompt = ev_prompts.get(item, f"Collect the following: {item}")
+                steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
+                num += 1
+
+            if ev_available:
+                have_list = "; ".join(ev_available[:3])
+                suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
+                steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels for court submission.", action_type="info_gathering", action_config={}, status="pending"))
+                num += 1
+
+            has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
+            if has_dates:
+                steps.append(ActionStep(number=num, text="Create a written timeline of damage incidents using the dates you mentioned — include each act of damage and communication with the tenant", action_type="info_gathering", action_config={}, status="pending"))
+            else:
+                steps.append(ActionStep(number=num, text="Create a detailed written timeline of all damage incidents — include dates, descriptions, and each communication with the tenant", action_type="info_gathering", action_config={}, status="pending"))
             num += 1
 
-        # For items already confirmed, add an acknowledgment/organization step
-        if ev_available:
-            have_list = "; ".join(ev_available[:3])
-            suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
-            steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels.", action_type="info_gathering", action_config={}, status="pending"))
+            steps.append(ActionStep(number=num, text="Send a formal demand letter to the tenant via registered post and email requesting compensation for damages within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter for Damages"}, status="pending"))
             num += 1
 
-        # Create a written timeline
-        has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
-        if has_dates:
-            steps.append(ActionStep(number=num, text="Create a written timeline of events using the dates you mentioned — include move-in, vacate, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
+            steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about jurisdiction, interest on damages, and recovery proceedings", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+            steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of damages with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Complaint Against Tenant"}, status="pending"))
+            num += 1
+
+            steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete camera footage, emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+            recommended = [
+                f"Send a formal demand letter to the tenant via registered post AD and email (keep proof of delivery)",
+                f"Collect and organize: {', '.join(all_items[:4])}",
+                "Consult a property lawyer — ask about: jurisdiction for filing, eligibility for interest, tenant's liability for intentional damage",
+                "File a complaint with the Rent Controller or civil court if the tenant is unresponsive after 15 days",
+                "Preserve all evidence — especially camera footage, do not delete any recordings",
+            ]
         else:
-            steps.append(ActionStep(number=num, text="Create a detailed written timeline of all events — include move-in date, vacate date, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
-        num += 1
+            # Tenant-specific evidence collection prompts
+            ev_prompts = {
+                "Rental agreement / lease contract": "Locate your rental agreement or request a copy from the landlord",
+                "Deposit payment receipt or bank transfer record": "Obtain bank statements showing the security deposit transaction",
+                "Written communication with landlord about the deposit": "Gather all emails, messages, or letters exchanged with the landlord about the deposit",
+                "Photographs/video of apartment condition at move-in and move-out": "Collect dated photographs or video of the property condition at move-in and move-out",
+                "Any repair bills or damage estimates the landlord claims": "Request written repair estimates or bills for any damages the landlord alleges",
+                "Move-out inspection report (if any)": "Obtain the move-out inspection report from the landlord or building manager",
+                "Witness statements from neighbours or building staff": "Speak to neighbours or building staff willing to provide written statements about the property condition",
+            }
 
-        # Demand letter
-        steps.append(ActionStep(number=num, text="Send a formal demand letter to the landlord via registered post and email requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"))
-        num += 1
+            for item in ev_missing:
+                prompt = ev_prompts.get(item, f"Collect the following: {item}")
+                steps.append(ActionStep(number=num, text=prompt, action_type="info_gathering", action_config={}, status="pending"))
+                num += 1
 
-        # Lawyer consultation
-        steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about limitation period, interest on delayed deposit, and jurisdiction for filing a recovery suit", action_type="info_gathering", action_config={}, status="pending"))
-        num += 1
+            if ev_available:
+                have_list = "; ".join(ev_available[:3])
+                suffix = f" and {len(ev_available)-3} more" if len(ev_available) > 3 else ""
+                steps.append(ActionStep(number=num, text=f"You already have: {have_list}{suffix}. Organize them in a folder with dates and labels.", action_type="info_gathering", action_config={}, status="pending"))
+                num += 1
 
-        # File complaint
-        steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of money with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"))
-        num += 1
+            has_dates = any(kw in desc_lower for kw in ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "2023", "2024", "2025", "2026"])
+            if has_dates:
+                steps.append(ActionStep(number=num, text="Create a written timeline of events using the dates you mentioned — include move-in, vacate, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
+            else:
+                steps.append(ActionStep(number=num, text="Create a detailed written timeline of all events — include move-in date, vacate date, and each communication with the landlord", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
 
-        # Preserve evidence
-        steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
-        num += 1
+            steps.append(ActionStep(number=num, text="Send a formal demand letter to the landlord via registered post and email requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"))
+            num += 1
 
-        recommended = [
-            f"Send a formal demand letter to the landlord via registered post AD and email (keep proof of delivery)",
-            f"Collect and organize: {', '.join(all_items[:4])}",
-            "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
-            "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
-            "Preserve all evidence — do not delete emails, messages, or call recordings",
-        ]
+            steps.append(ActionStep(number=num, text="If no response within 7 days, consult a property lawyer — ask about limitation period, interest on delayed deposit, and jurisdiction for filing a recovery suit", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+            steps.append(ActionStep(number=num, text="File a complaint with the Rent Controller or file a civil suit for recovery of money with interest and costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"))
+            num += 1
+
+            steps.append(ActionStep(number=num, text="Preserve all evidence — do not delete emails, messages, or call recordings. Take screenshots and back them up.", action_type="info_gathering", action_config={}, status="pending"))
+            num += 1
+
+            recommended = [
+                f"Send a formal demand letter to the landlord via registered post AD and email (keep proof of delivery)",
+                f"Collect and organize: {', '.join(all_items[:4])}",
+                "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
+                "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
+                "Preserve all evidence — do not delete emails, messages, or call recordings",
+            ]
+
         return steps, recommended
 
     def _mock_analysis(self, description: str, evidence_available_override: list[str] | None = None, evidence_missing_override: list[str] | None = None) -> AnalyzeResponseDTO:
@@ -474,36 +609,96 @@ class AgentService:
         is_consumer = any(kw in desc_lower for kw in ["consumer", "product", "defective", "service", "laptop", "refund", "warranty"])
         is_employment = any(kw in desc_lower for kw in ["salary", "employer", "wage", "termination", "fired", "employment"])
 
+        # ── Detect user role: landlord or tenant ────────────────────────
+        is_landlord = any(kw in desc_lower for kw in [
+            "i am a landlord", "i'm a landlord", "my tenant", "the tenant",
+            "tenant is", "tenant keeps", "tenant refuses", "tenant damaged",
+            "tenant broke", "tenant breaking", "as a landlord", "i own the property",
+            "my property", "i rented out", "i leased",
+        ])
+        is_tenant = any(kw in desc_lower for kw in [
+            "my landlord", "the landlord", "landlord is", "landlord refuses",
+            "landlord keeps", "landlord won't", "as a tenant", "i am a tenant",
+            "i'm a tenant", "my deposit", "security deposit", "evicted me",
+            "kicked me out", "locked me out",
+        ])
+        # If both or neither detected, default based on context
+        if is_landlord and not is_tenant:
+            user_role = "landlord"
+        elif is_tenant and not is_landlord:
+            user_role = "tenant"
+        elif "landlord" in desc_lower and "tenant" in desc_lower:
+            # Both mentioned — check who is the subject ("I am" vs "my tenant/landlord")
+            if re.search(r'\bi\s+(?:am|\'m)\s+a?\s*landlord\b', desc_lower):
+                user_role = "landlord"
+            elif re.search(r'\bi\s+(?:am|\'m)\s+a?\s*tenant\b', desc_lower):
+                user_role = "tenant"
+            elif re.search(r'\bmy\s+tenant\b', desc_lower):
+                user_role = "landlord"
+            elif re.search(r'\bmy\s+landlord\b', desc_lower):
+                user_role = "tenant"
+            else:
+                user_role = "tenant"  # fallback
+        else:
+            user_role = "tenant"  # default
+
         if is_tenancy:
             case_type = "tenancy_dispute"
             legal_domain = "Landlord-Tenant"
             severity = "medium"
             risk = "medium"
-            summary = "This appears to be a tenancy-related dispute. Based on your description, there may be legal grounds to pursue a claim."
-            ai_message = "I've analyzed your tenancy issue. Let me outline the legal landscape and what you'll need to build a strong case."
             coverage = LAW_DOCS_COVERAGE_TENANCY
-            sections = [
-                {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
-                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby, which naturally arose in the usual course of business from such breach."},
-                {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Security deposit and its refund", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The landlord shall refund the security deposit to the tenant at the time of vacating the premises after deducting any amount due, if any, and shall provide a detailed statement of deductions."},
-            ]
-            evidence_missing_items = [
-                "Rental agreement / lease contract",
-                "Deposit payment receipt or bank transfer record",
-                "Written communication with landlord about the deposit",
-                "Photographs/video of apartment condition at move-in and move-out",
-                "Any repair bills or damage estimates the landlord claims",
-                "Move-out inspection report (if any)",
-                "Witness statements from neighbours or building staff",
-            ]
-            evidence_suggestions = [
-                "Obtain a written estimate from a contractor for any alleged damages",
-                "Get a notarized affidavit from a neighbour confirming the property condition",
-                "Request a formal move-out inspection report from the landlord in writing",
-                "File a police complaint (Non-Cognizable Report) for harassment if applicable",
-                "Get a legal consultation from a property lawyer and obtain a written opinion",
-                "Collect bank statements showing the deposit payment transaction",
-            ]
+
+            if user_role == "landlord":
+                summary = "This appears to be a tenancy-related dispute where you (the landlord) are seeking to recover damages caused by your tenant. Based on your description, there are legal grounds to pursue a claim for property damage."
+                ai_message = "I've analyzed your situation as a landlord. Your tenant's intentional property damage gives you strong legal grounds. Here's what you'll need to build a solid case for recovery."
+                sections = [
+                    {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "The lessee is bound to keep the premises in as good a condition as they were in at the time of the lease, reasonable wear and tear excepted."},
+                    {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby."},
+                    {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Tenant's obligation to maintain property", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The tenant shall not cause or permit any damage to the premises and shall, at the time of vacation, restore the premises to the condition in which they were at the commencement of the tenancy."},
+                ]
+                evidence_missing_items = [
+                    "Copy of the signed lease/rental agreement",
+                    "Photographs or video of property damage (before and after)",
+                    "Camera footage showing tenant causing damage",
+                    "Written repair estimates or invoices for damage修复",
+                    "Written communication with tenant about the damage",
+                    "Move-in condition report or photographs",
+                    "Witness statements from neighbours or building staff",
+                ]
+                evidence_suggestions = [
+                    "Get a professional damage assessment report from a contractor",
+                    "Obtain notarized affidavits from neighbours who witnessed the damage",
+                    "File a police complaint (FIR/NCR) for intentional property destruction",
+                    "Get a legal consultation from a property lawyer",
+                    "Collect rent payment records showing tenant's tenancy period",
+                    "Document all previous communications with the tenant about property care",
+                ]
+            else:
+                summary = "This appears to be a tenancy-related dispute. Based on your description, there may be legal grounds to pursue a claim."
+                ai_message = "I've analyzed your tenancy issue. Let me outline the legal landscape and what you'll need to build a strong case."
+                sections = [
+                    {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
+                    {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby, which naturally arose in the usual course of business from such breach."},
+                    {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Security deposit and its refund", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The landlord shall refund the security deposit to the tenant at the time of vacating the premises after deducting any amount due, if any, and shall provide a detailed statement of deductions."},
+                ]
+                evidence_missing_items = [
+                    "Rental agreement / lease contract",
+                    "Deposit payment receipt or bank transfer record",
+                    "Written communication with landlord about the deposit",
+                    "Photographs/video of apartment condition at move-in and move-out",
+                    "Any repair bills or damage estimates the landlord claims",
+                    "Move-out inspection report (if any)",
+                    "Witness statements from neighbours or building staff",
+                ]
+                evidence_suggestions = [
+                    "Obtain a written estimate from a contractor for any alleged damages",
+                    "Get a notarized affidavit from a neighbour confirming the property condition",
+                    "Request a formal move-out inspection report from the landlord in writing",
+                    "File a police complaint (Non-Cognizable Report) for harassment if applicable",
+                    "Get a legal consultation from a property lawyer and obtain a written opinion",
+                    "Collect bank statements showing the deposit payment transaction",
+                ]
 
             section_refs = self._build_section_refs(sections)
             steps = []
@@ -632,11 +827,11 @@ class AgentService:
         # ── Generate documents with evidence context ──
         notice_content, other_docs = self._generate_documents(
             description, sections, section_refs, ev_available, ev_missing,
-            evidence_missing_items, now_str
+            evidence_missing_items, now_str, user_role=user_role
         )
 
         # ── Dynamically generate action plan based on description + evidence ──
-        steps, recommended = self._generate_action_plan(description, ev_available, ev_missing, evidence_missing_items)
+        steps, recommended = self._generate_action_plan(description, ev_available, ev_missing, evidence_missing_items, user_role=user_role)
 
         # Render ready-to-use documents — fill placeholders
         notice = self._render_doc_template(notice_content, info)
