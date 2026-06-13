@@ -1,6 +1,17 @@
 from pydantic import BaseModel
 
 
+class DocumentDTO(BaseModel):
+    id: str
+    case_id: str
+    doc_type: str
+    title: str
+    content: str
+    status: str = "draft"
+    created_at: str = ""
+    updated_at: str | None = None
+
+
 class ClarifyingQuestion(BaseModel):
     question: str
     key: str
@@ -49,6 +60,7 @@ class AnalyzeResponseDTO(BaseModel):
     legal_domain: str = ""
     relevant_sections: list
     legal_notice_draft: str = ""
+    other_documents: list[DocumentDTO] = []
     summary: str
     next_steps: list[ActionStep] = []
     reasoning_trace: str
@@ -58,8 +70,12 @@ class AnalyzeResponseDTO(BaseModel):
     case_readiness_score: int = 0
     evidence_available: list[str] = []
     evidence_missing: list[str] = []
+    evidence_suggestions: list[str] = []
     risk_level: str = "medium"
     recommended_actions: list[str] = []
+    is_sufficient: bool = True
+    law_docs_available: list[str] = []
+    law_docs_coverage: str = ""
 
 
 class ChatMessageDTO(BaseModel):
@@ -95,17 +111,6 @@ class PdfResponseDTO(BaseModel):
     pdf_url: str
     pdf_id: str
     generated_at: str
-
-
-class DocumentDTO(BaseModel):
-    id: str
-    case_id: str
-    doc_type: str
-    title: str
-    content: str
-    status: str = "draft"
-    created_at: str = ""
-    updated_at: str | None = None
 
 
 class ExecuteActionRequest(BaseModel):

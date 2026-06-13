@@ -26,6 +26,35 @@ from app.interfaces.i_rag_service import IRagService
 LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = "gpt-4o"
 
+DRAFT_DISCLAIMER = (
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "⚠ THIS IS A COMPUTER-GENERATED DRAFT — FOR REFERENCE ONLY ⚠\n"
+    "This document is an AI-generated draft based on your case description.\n"
+    "It does NOT constitute legal advice. Please review with a qualified\n"
+    "legal professional before use. Facts, legal citations, and amounts\n"
+    "must be verified and customized to your specific situation.\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+)
+
+AVAILABLE_LAW_DOCS = [
+    "Model Tenancy Act, 2021",
+    "Transfer of Property Act, 1882",
+    "Registration Act, 1908",
+]
+LAW_DOCS_COVERAGE_TENANCY = (
+    "This case is within our knowledge base. The following law documents "
+    "have been ingested and were used for legal analysis: "
+    + ", ".join(AVAILABLE_LAW_DOCS) + ". "
+    "These cover tenancy, property transfer, and registration matters."
+)
+LAW_DOCS_COVERAGE_LIMITED = (
+    "[!] Limited law documents available in the database. "
+    "Currently ingested: " + ", ".join(AVAILABLE_LAW_DOCS) + ". "
+    "These primarily cover tenancy, property, and registration law. "
+    "Your case type may not be fully covered by the available legal corpus. "
+    "Consider consulting a qualified legal professional for case-specific advice."
+)
+
 # ── Document type definitions ───────────────────────────────────────────
 # Only ask for personal details NOT already in the case description.
 # The LLM receives the full case description and extracts subject, facts, and
@@ -129,57 +158,505 @@ class AgentService:
                 await asyncio.sleep(wait)
         return ""
 
-    def _mock_analysis(self, description: str) -> AnalyzeResponseDTO:
-        desc_lower = description.lower()
-        if "landlord" in desc_lower or "tenant" in desc_lower or "deposit" in desc_lower or "rent" in desc_lower:
+    def _build_section_refs(self, sections: list[dict]) -> str:
+        if not sections:
+            return ""
+        lines = []
+        for s in sections:
+            act = s.get("act", "")
+            sec = s.get("section_number", s.get("section", ""))
+            title = s.get("section_title", s.get("title", ""))
+            excerpt = s.get("excerpt", "")
+            score = s.get("score", 0)
+            parts = []
+            if act:
+                parts.append(act)
+            if sec:
+                parts.append(f"Section {sec}")
+            citation = " — ".join(parts)
+            lines.append(f"({citation}, Relevance: {round(score * 100)}%)")
+            if title:
+                lines.append(f"   - {title}")
+            if excerpt:
+                lines.append(f"   - Relevant excerpt: \"{excerpt[:150]}...\"")
+        return "\n".join(lines)
+
+    def _build_evidence_section(self, ev_available: list[str], ev_missing: list[str]) -> str:
+        lines = ["━━━ EVIDENCE STATUS ━━━"]
+        if ev_available:
+            lines.append("You confirmed having the following evidence, which has been incorporated into this document:")
+            for e in ev_available:
+                lines.append(f"  ✓ {e}")
+        else:
+            lines.append("No evidence has been confirmed yet.")
+        if ev_missing:
+            lines.append("\nStill required for a stronger case:")
+            for e in ev_missing:
+                lines.append(f"  ✗ {e}")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+        return "\n".join(lines)
+
+    def _mock_analysis(self, description: str, evidence_available_override: list[str] | None = None, evidence_missing_override: list[str] | None = None) -> AnalyzeResponseDTO:
+        desc_lower = description.lower().strip()
+        now_str = datetime.now(timezone.utc).strftime('%d %B %Y')
+
+        # ── Nonsense / gibberish detection ─────────────────────────────
+        nonsense_patterns = ["sigma", "alpha", "rizz", "gyatt", "skibidi", "lol", "xd", "asdf", "qwerty", "test", "123"]
+        word_count = len(desc_lower.split())
+        if word_count < 3 or any(p in desc_lower for p in nonsense_patterns):
+            return AnalyzeResponseDTO(
+                case_type="other",
+                severity="low",
+                legal_domain="Other",
+                relevant_sections=[],
+                legal_notice_draft="",
+                summary="",
+                next_steps=[],
+                reasoning_trace="[mock] Nonsense or insufficient input detected",
+                clarifying_questions=[],
+                action_buttons=[],
+                ai_message="I'm unable to process this input. Please describe your legal problem in detail so I can provide meaningful assistance.",
+                case_readiness_score=0,
+                evidence_available=[],
+                evidence_missing=[],
+                risk_level="low",
+                recommended_actions=[],
+                is_sufficient=False,
+                law_docs_available=AVAILABLE_LAW_DOCS,
+                law_docs_coverage="",
+            )
+
+        section_refs = ""
+        evidence_suggestions = []
+
+        # ── Classify case type ──────────────────────────────────────────
+        is_tenancy = any(kw in desc_lower for kw in ["landlord", "tenant", "deposit", "rent", "evict", "lease"])
+        is_consumer = any(kw in desc_lower for kw in ["consumer", "product", "defective", "service", "laptop", "refund", "warranty"])
+        is_employment = any(kw in desc_lower for kw in ["salary", "employer", "wage", "termination", "fired", "employment"])
+
+        if is_tenancy:
             case_type = "tenancy_dispute"
             legal_domain = "Landlord-Tenant"
             severity = "medium"
-            summary = "This is a security deposit dispute between a tenant and landlord. The tenant has vacated the premises and the landlord is withholding the deposit without providing evidence of damage. The tenant has the rental agreement and payment records, which strengthens their position."
-            ai_message = "I've analyzed your tenancy dispute. You have a strong case for recovering your security deposit, especially since you have the rental agreement and payment records. Let me walk you through the next steps."
             risk = "medium"
-            readiness = 65
-            evidence_have = ["Rental agreement / lease contract", "Bank transfer records for deposit payment", "Vacation handover proof or date records", "Communication records with landlord"]
-            evidence_need = ["Written notice demanding deposit return (with proof of delivery)", "Photographs of apartment condition at move-out", "Witness statements if available", "Any repair estimates the landlord claims"]
+            summary = "This appears to be a tenancy-related dispute. Based on your description, there may be legal grounds to pursue a claim."
+            ai_message = "I've analyzed your tenancy issue. Let me outline the legal landscape and what you'll need to build a strong case."
+            base_readiness = 25
+            coverage = LAW_DOCS_COVERAGE_TENANCY
             sections = [
                 {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
                 {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby, which naturally arose in the usual course of business from such breach."},
-                {"act": "Code of Civil Procedure, 1908", "chapter": "", "section_number": "Order 37", "section_title": "Summary Procedure", "score": 0.76, "vector_score": 0.72, "bm25_score": 0.68, "excerpt": "Summary procedure applies to suits upon bills of exchange, hundies and promissory notes, and suits in which the plaintiff seeks only to recover a debt or liquidated demand in money."},
+                {"act": "Model Tenancy Act, 2021", "chapter": "", "section_number": "13", "section_title": "Security deposit and its refund", "score": 0.85, "vector_score": 0.83, "bm25_score": 0.80, "excerpt": "The landlord shall refund the security deposit to the tenant at the time of vacating the premises after deducting any amount due, if any, and shall provide a detailed statement of deductions."},
             ]
-        elif "consumer" in desc_lower or "product" in desc_lower or "defective" in desc_lower or "service" in desc_lower:
+            evidence_missing_items = [
+                "Rental agreement / lease contract",
+                "Deposit payment receipt or bank transfer record",
+                "Written communication with landlord about the deposit",
+                "Photographs/video of apartment condition at move-in and move-out",
+                "Any repair bills or damage estimates the landlord claims",
+                "Move-out inspection report (if any)",
+                "Witness statements from neighbours or building staff",
+            ]
+            evidence_suggestions = [
+                "Obtain a written estimate from a contractor for any alleged damages",
+                "Get a notarized affidavit from a neighbour confirming the property condition",
+                "Request a formal move-out inspection report from the landlord in writing",
+                "File a police complaint (Non-Cognizable Report) for harassment if applicable",
+                "Get a legal consultation from a property lawyer and obtain a written opinion",
+                "Collect bank statements showing the deposit payment transaction",
+            ]
+
+            section_refs = self._build_section_refs(sections)
+
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
+                    DRAFT_DISCLAIMER +
+                    f"FORMAL DEMAND LETTER\n"
+                    f"==============================\n\n"
+                    f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Formal demand for refund of security deposit\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"This is a formal demand for the immediate refund of my security deposit. "
+                    f"This demand is made in conjunction with the Legal Notice served separately.\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"Your refusal to refund the deposit is contrary to the following laws identified through case analysis from our database:\n"
+                    f"{section_refs}\n\n"
+                    f"The primary match ({round(sections[0]['score']*100)}% relevance) is {sections[0]['act']} "
+                    f"Section {sections[0]['section_number']} ({sections[0]['section_title']}), which governs lessor "
+                    f"and lessee liabilities. The {sections[2]['act']} Section {sections[2]['section_number']} "
+                    f"({round(sections[2]['score']*100)}% relevance) specifically addresses security deposit refunds.\n\n"
+                    f"EVIDENCE IN SUPPORT:\n"
+                    f"The following evidence substantiates this claim:\n"
+                    + "\n".join(f"- {item}" for item in evidence_missing_items[:4]) + "\n\n"
+                    f"DEMAND:\n"
+                    f"You are hereby called upon to pay Rs. [Amount] within 7 days of receipt of this letter. "
+                    f"Failure to comply will result in immediate legal proceedings.\n\n"
+                    f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+                )),
+                DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
+                    DRAFT_DISCLAIMER +
+                    f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
+                    f"==============================\n\n"
+                    f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
+                    f"COMPLAINT NO: _____\n\n"
+                    f"IN THE MATTER OF:\n[Your Name] … Complainant\nVS\n[Landlord's Name] … Respondent\n\n"
+                    f"MOST RESPECTFULLY SHOWETH:\n\n"
+                    f"1. The complainant was a tenant at [Address] from [Date] to [Date].\n"
+                    f"2. The complainant paid a security deposit of Rs. [Amount] at the time of tenancy.\n"
+                    f"3. The complainant vacated the premises on [Date] after proper notice.\n"
+                    f"4. The respondent has failed to return the security deposit despite repeated demands and a formal legal notice.\n"
+                    f"5. The respondent alleges damages without providing any evidence or inspection report.\n\n"
+                    f"LEGAL PROVISIONS INVOKED:\n"
+                    f"This complaint is grounded in the following legal provisions identified through database search:\n"
+                    f"{section_refs}\n\n"
+                    f"The respondent's actions constitute:\n"
+                    f"a) Breach of contract under {sections[1]['act']} Section {sections[1]['section_number']} "
+                    f"({sections[1]['section_title']}) — the respondent has failed to return the deposit.\n"
+                    f"b) Violation of lessor-liability under {sections[0]['act']} Section {sections[0]['section_number']}.\n"
+                    f"c) Violation of {sections[2]['act']} Section {sections[2]['section_number']} — the specific tenancy "
+                    f"law provision governing security deposit refunds.\n"
+                    f"d) Unjust enrichment — the respondent is withholding money without legal basis.\n\n"
+                    f"EVIDENCE RELIED UPON:\n"
+                    + "\n".join(f"{i+1}. {item}" for i, item in enumerate(evidence_missing_items)) + "\n\n"
+                    f"PRAYER:\n"
+                    f"It is therefore most respectfully prayed that this Honourable Court may be pleased to:\n"
+                    f"a) Direct the respondent to return the security deposit of Rs. [Amount] with interest at 18% per annum.\n"
+                    f"b) Award costs of the proceedings.\n"
+                    f"c) Pass any other order deemed fit.\n\n"
+                    f"Complainant\n[Your Name]\n[Date]"
+                )),
+            ]
+            steps = [
+                ActionStep(number=1, text="Gather all documents related to your tenancy including rental agreement, deposit receipts, and communication records", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=2, text="Send a formal demand letter to your landlord requesting deposit return within 7 days", action_type="generate_document", action_config={"doc_type": "demand_letter", "title": "Demand Letter"}, status="pending"),
+                ActionStep(number=3, text="If no response, consult a lawyer specializing in landlord-tenant disputes. Ask: 'What is the limitation period for filing a recovery suit?'; 'Can I claim interest on the delayed deposit?'; 'What court should I file in based on the deposit amount?'", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=4, text="File a complaint with the Rent Controller or file a civil suit for recovery of money", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Legal Complaint"}, status="pending"),
+            ]
+            recommended = [
+                "Send a formal demand letter to the landlord via registered post and email (keep proof of delivery)",
+                "Collect and organize: rental agreement, deposit payment proof, move-out photos, all communication with landlord",
+                "Consult a property lawyer — ask about: limitation period for recovery suits, eligibility for interest, jurisdiction/forum for filing",
+                "File a complaint with the Rent Controller if the landlord is unresponsive after 15 days",
+                "Preserve all evidence — do not delete emails, messages, or call recordings",
+            ]
+
+        elif is_consumer:
             case_type = "consumer_dispute"
             legal_domain = "Consumer Protection"
             severity = "medium"
-            summary = "This appears to be a consumer dispute regarding a product or service. Under the Consumer Protection Act, 2019, you have the right to seek redressal for defective goods or deficient services."
-            ai_message = "I've analyzed your consumer complaint. You have options under the Consumer Protection Act to seek a resolution. Let me outline the steps you can take."
-            risk = "low"
-            readiness = 70
-            evidence_have = ["Purchase receipt / invoice", "Warranty or guarantee card", "Photographs/videos of defect", "Communication with seller/provider"]
-            evidence_need = ["Expert opinion on the defect", "Medical records (if personal injury)", "Cost estimates for repairs", "Copy of complaint to seller/provider"]
+            risk = "medium"
+            summary = "This appears to be a consumer dispute. However, our database currently only has tenancy/property law documents ingested. Consumer Protection Act provisions shown below are simulated for reference."
+            ai_message = "I've analyzed your consumer complaint. Note: our legal database currently covers tenancy and property law. Consumer-specific laws have not been ingested yet. The analysis below uses general legal principles."
+            base_readiness = 20
+            coverage = LAW_DOCS_COVERAGE_LIMITED
             sections = [
-                {"act": "Consumer Protection Act, 2019", "chapter": "", "section_number": "2(7)", "section_title": "Definition of Consumer", "score": 0.95, "vector_score": 0.92, "bm25_score": 0.90, "excerpt": "Consumer means any person who buys any goods for a consideration which has been paid or promised or partly paid and partly promised, or under any system of deferred payment and includes any user of such goods other than the person who buys such goods for consideration paid or promised."},
-                {"act": "Consumer Protection Act, 2019", "chapter": "", "section_number": "35", "section_title": "Filing of complaints before District Commission", "score": 0.91, "vector_score": 0.88, "bm25_score": 0.85, "excerpt": "A complaint may be filed with the District Commission by the consumer to whom such goods are sold or delivered or agreed to be sold or delivered or such services provided or agreed to be provided."},
+                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.75, "vector_score": 0.72, "bm25_score": 0.70, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive compensation for any loss or damage caused to him thereby."},
             ]
+            evidence_missing_items = [
+                "Purchase invoice / bill of sale",
+                "Warranty card or guarantee certificate",
+                "Photographs/videos clearly showing the defect",
+                "Written complaint made to the seller (email/letter/chat)",
+                "Seller's response/rejection letter or message",
+                "Expert opinion or service centre report about the defect",
+                "Payment proof (credit card statement, UPI receipt, bank transfer)",
+            ]
+            evidence_suggestions = [
+                "Get a written expert opinion from an authorized service center",
+                "File a complaint on the Consumer Helpline (1915) as a first step",
+                "Get a legal consultation from a consumer rights lawyer",
+                "Check if the product is covered under additional warranty or insurance",
+                "Obtain CCTV footage of the product delivery/unboxing if available",
+            ]
+
+            section_refs = self._build_section_refs(sections)
+
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Consumer Complaint Letter", content=(
+                    DRAFT_DISCLAIMER +
+                    f"COMPLAINT LETTER FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
+                    f"TO:\n[Seller/Service Provider Name]\n[Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Complaint regarding defective goods / deficient services\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"I, [Your Name], purchased [Product/Service] from you on [Date] for Rs. [Amount]. "
+                    f"The product is defective / service is deficient in the following manner:\n\n"
+                    f"[Describe defect/deficiency in detail]\n\n"
+                    f"Despite my complaint dated [Date], you have failed to provide a satisfactory resolution.\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"{section_refs}\n\n"
+                    f"Note: The Consumer Protection Act, 2019 is the primary law governing this matter, "
+                    f"but it has not yet been ingested into our database. The above contract law provision "
+                    f"is provided as a general reference.\n\n"
+                    f"You are hereby called upon to:\n"
+                    f"1. Replace the defective product / rectify the deficient service; OR\n"
+                    f"2. Refund the full amount of Rs. [Amount] within 15 days.\n\n"
+                    f"Failure to comply will result in me filing a complaint before the appropriate Consumer Forum.\n\n"
+                    f"Yours faithfully,\n[Your Name]"
+                )),
+            ]
+            steps = [
+                ActionStep(number=1, text="Send a written complaint to the seller via email and registered post. Keep copies of all correspondence.", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Consumer Complaint Letter"}, status="pending"),
+                ActionStep(number=2, text="Wait 15 days for the seller's response. If they respond, evaluate their offer.", action_type="wait", action_config={}, status="pending"),
+                ActionStep(number=3, text="Consult a consumer rights lawyer since our database does not have the Consumer Protection Act ingested. Ask: 'What is the pecuniary jurisdiction for my claim?'; 'Can I claim compensation for mental harassment?'; 'What documents are needed for filing before the District Commission?'", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=4, text="File a complaint before the appropriate Consumer Disputes Redressal Commission", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Consumer Complaint"}, status="pending"),
+            ]
+            recommended = [
+                "Send a formal complaint to the seller via registered post AD and email",
+                "Collect: purchase invoice, warranty card, defect photos/videos, seller's response, payment proof",
+                "Consult a consumer lawyer — our database lacks consumer-specific laws, so professional advice is essential",
+                "File a complaint on the Consumer Helpline (1915) or e-Daakhil portal as a first step",
+                "If claim is under Rs. 50 lakhs, file before the District Consumer Disputes Redressal Commission",
+            ]
+
+        elif is_employment:
+            case_type = "employment_dispute"
+            legal_domain = "Employment"
+            severity = "high"
+            risk = "high"
+            summary = "This involves an employment-related dispute. However, our database currently only has tenancy/property law documents. Employment law provisions below are simulated for reference."
+            ai_message = "I've analyzed your employment issue. Note: our legal database currently covers tenancy and property law. Employment-specific laws have not been ingested yet. The analysis below uses general legal principles."
+            base_readiness = 20
+            coverage = LAW_DOCS_COVERAGE_LIMITED
+            sections = [
+                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.78, "vector_score": 0.75, "bm25_score": 0.72, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive compensation for any loss or damage caused to him thereby."},
+            ]
+            evidence_missing_items = [
+                "Employment contract / appointment letter",
+                "Salary slips for the unpaid months",
+                "Bank statements showing no salary credit",
+                "Email/letter communication with employer about unpaid salary",
+                "Attendance records or timesheets",
+                "ESIC/PF contribution statements (if applicable)",
+                "Witness statements from colleagues",
+            ]
+            evidence_suggestions = [
+                "Get a written employment history letter from HR",
+                "File a complaint with the Labour Commissioner in your state",
+                "Get a legal consultation from an employment lawyer",
+                "Check if your employer has issued a Form 16 for previous tax filings",
+                "Obtain call logs and message backups showing communication with employer",
+            ]
+
+            section_refs = self._build_section_refs(sections)
+
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Notice for Recovery of Salary Dues", content=(
+                    DRAFT_DISCLAIMER +
+                    f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
+                    f"TO:\n[Employer/Company Name]\n[Company Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Notice for recovery of unpaid salary amounting to Rs. [Amount]\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"I, [Your Name], was employed as [Designation] at [Company Name] since [Start Date].\n\n"
+                    f"My salary for [Unpaid Period] amounting to Rs. [Amount] has not been credited. "
+                    f"I have made multiple verbal and written requests, but the amount remains unpaid.\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"{section_refs}\n\n"
+                    f"Note: The Payment of Wages Act, 1936 and Industrial Disputes Act, 1947 are the primary laws "
+                    f"governing this matter, but they have not yet been ingested into our database. "
+                    f"The above contract law provision is provided as a general reference. "
+                    f"Please consult an employment lawyer for specific labor law advice.\n\n"
+                    f"You are hereby called upon to pay the full outstanding amount of Rs. [Amount] within 7 days.\n\n"
+                    f"In case of non-compliance:\n"
+                    f"1. A complaint will be filed before the Labour Commissioner;\n"
+                    f"2. Criminal proceedings under Section 406 IPC may be initiated;\n"
+                    f"3. A civil suit for recovery will be filed with interest and costs.\n\n"
+                    f"Yours faithfully,\n[Your Name]\n[Phone Number]"
+                )),
+            ]
+            steps = [
+                ActionStep(number=1, text="Send a formal notice to your employer demanding unpaid salary within 7 days", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Salary Demand Notice"}, status="pending"),
+                ActionStep(number=2, text="File a complaint with the Labour Commissioner under the Payment of Wages Act", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=3, text="Consult an employment lawyer since our database lacks employment-specific laws. Ask: 'Is this a criminal breach of trust under Section 406 IPC?'; 'What is the procedure before the Labour Commissioner?'; 'Can I claim interest on delayed wages?'", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=4, text="File a civil suit for recovery of unpaid wages with interest and legal costs", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Civil Suit"}, status="pending"),
+            ]
+            recommended = [
+                "Send a legal notice to your employer via registered post and email immediately",
+                "Collect: appointment letter, salary slips, bank statements, emails about unpaid salary, attendance records",
+                "File a complaint with the Labour Commissioner in your state",
+                "Consult an employment lawyer — our database lacks employment-specific laws, so professional advice is critical",
+                "Preserve all communication — do not delete emails, WhatsApp messages, or call logs with your employer",
+            ]
+
         else:
             case_type = "other"
             legal_domain = "Civil"
             severity = "low"
-            summary = "Your legal matter has been reviewed. Based on the information provided, here is an assessment of your situation and recommended course of action."
-            ai_message = "I've reviewed your case. Here's my analysis and recommended steps to help you move forward."
             risk = "low"
-            readiness = 45
-            evidence_have = ["Relevant documents and records", "Any correspondence related to the matter"]
-            evidence_need = ["Gather all related documents", "Document timeline of events", "Identify relevant legal provisions"]
+            summary = "Your legal matter has been reviewed. Based on the limited information provided, here is a general assessment. Our database currently only has tenancy/property law documents."
+            ai_message = "I've reviewed what you've shared. Our legal database currently covers tenancy and property law. Your case type may not be fully covered. Consider consulting a lawyer for specific advice."
+            base_readiness = 10
+            coverage = LAW_DOCS_COVERAGE_LIMITED
             sections = []
+            evidence_missing_items = [
+                "Detailed description of the incident/problem",
+                "Any documents or records related to the matter",
+                "Communication records with the other party",
+                "Timeline of events",
+                "Witness information (if applicable)",
+                "Previous legal notices or court orders (if any)",
+            ]
+            evidence_suggestions = [
+                "Create a written timeline of all events with dates",
+                "Collect all related documents, emails, and messages",
+                "Get a legal consultation from a lawyer in the relevant practice area",
+                "Check if the matter is covered by any specific statute of limitations",
+                "Obtain a notarized affidavit describing the incident if applicable",
+            ]
 
-        steps = [
-            ActionStep(number=1, text="Send a formal legal notice to the opposing party", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Legal Notice"}, status="pending"),
-            ActionStep(number=2, text="Wait for response from the opposing party (up to 15 days)", action_type="wait", action_config={}, status="pending"),
-            ActionStep(number=3, text="Collect and organize all evidence for potential legal proceedings", action_type="info_gathering", action_config={}, status="pending"),
-            ActionStep(number=4, text="File a complaint with the appropriate authority if no response received", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Formal Complaint"}, status="pending"),
-        ]
+            other_docs = [
+                DocumentDTO(id="", case_id="", doc_type="legal_notice", title="General Legal Notice", content=(
+                    DRAFT_DISCLAIMER +
+                    f"LEGAL NOTICE\n\n"
+                    f"TO:\n[Recipient Name]\n[Address]\n\n"
+                    f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                    f"Date: {now_str}\n\n"
+                    f"SUBJECT: Legal notice\n\n"
+                    f"Dear Sir/Madam,\n\n"
+                    f"I, [Your Name], hereby serve this legal notice upon you.\n\n"
+                    f"[Describe the issue briefly]\n\n"
+                    f"LEGAL GROUNDS:\n"
+                    f"Note: Our database currently contains the following law documents: "
+                    + ", ".join(AVAILABLE_LAW_DOCS) + ". "
+                    f"Your case type does not clearly match these. The applicable laws may fall outside "
+                    f"our current knowledge base. Please consult a qualified legal professional.\n\n"
+                    f"You are called upon to respond to the above matter within 15 days, failing which "
+                    f"I shall initiate appropriate legal proceedings.\n\n"
+                    f"Yours faithfully,\n[Your Name]"
+                )),
+            ]
+            steps = [
+                ActionStep(number=1, text="Document a detailed timeline of events including dates, persons involved, and key facts", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=2, text="Gather all related documents, correspondence, and evidence", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=3, text="Consult a lawyer in the relevant area of law. Our database only covers tenancy/property — ask: 'What legal provisions apply to my situation?'; 'What is the limitation period?'; 'What evidence is essential?'", action_type="info_gathering", action_config={}, status="pending"),
+                ActionStep(number=4, text="Send a legal notice to the opposing party once you have a clearer picture", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Legal Notice"}, status="pending"),
+            ]
+            recommended = [
+                "Create a detailed written timeline of all events related to your issue",
+                "Collect all documents, emails, messages, and records related to the matter",
+                "Consult a lawyer — ask about: applicable laws, limitation periods, evidence requirements, and potential remedies",
+                "Send a formal legal notice to the opposing party once you understand your legal position",
+                "Do not destroy any evidence — preserve messages, emails, documents, and photographs",
+            ]
 
-        notice = f"LEGAL NOTICE\n\nTO:\n[Opponent's Name]\n[Opponent's Address]\n\nFROM:\n[Your Name]\n[Your Address]\n\nDate: {datetime.now(timezone.utc).strftime('%d %B %Y')}\n\nSUBJECT: Legal notice regarding {case_type.replace('_', ' ')}\n\nDear Sir/Madam,\n\nI, [Your Name], hereby serve this legal notice upon you through my authorized representative.\n\n{summary}\n\nYou are hereby called upon to:\n1. Provide a full and complete response to the matters raised herein within 15 days from the receipt of this notice;\n2. Refrain from any act that may prejudice the rights of the notice-sender;\n3. Preserve all documents and evidence related to the subject matter of this dispute.\n\nIn the event of your failure to comply with the above demands, I shall be constrained to initiate appropriate legal proceedings against you before the competent court of law, wherein you shall be held liable for all costs and expenses incurred.\n\nThis notice is issued without prejudice to any other rights and remedies available to me under the law.\n\nYours faithfully,\n\n[Your Name]\n[Signature]"
+        # ── Adjust readiness based on description detail ──────────────────
+        detail_boost = min(25, word_count * 3)
+        for keyword in ["receipt", "agreement", "contract", "invoice", "bank", "payment", "photos", "email", "letter", "document", "proof", "evidence", "record", "statement", "witness"]:
+            if keyword in desc_lower:
+                detail_boost += 3
+        base_readiness = max(base_readiness, 10)
+
+        # ── Apply evidence override if provided ───────────────────────────
+        if evidence_available_override is not None:
+            ev_available = evidence_available_override
+            if evidence_missing_override is not None:
+                ev_missing = evidence_missing_override
+            else:
+                ev_missing = [e for e in evidence_missing_items if e not in ev_available]
+            total_ev = len(ev_available) + len(ev_missing)
+            ev_confirmed_pct = len(ev_available) / max(total_ev, 1)
+            ev_boost = int(ev_confirmed_pct * 40)
+            readiness = min(85, base_readiness + detail_boost + ev_boost)
+        else:
+            ev_available = []
+            ev_missing = evidence_missing_items
+
+        ev_section = self._build_evidence_section(ev_available,
+            [e for e in evidence_missing_items if e not in ev_available] if evidence_available_override is not None else evidence_missing_items)
+
+        # ── Generate legal notice draft (with DRAFT disclaimer) ──────────
+        ev_text = f"\nEVIDENCE ON RECORD:\n{ev_section}\n\n"
+
+        if case_type == "tenancy_dispute":
+            notice_content = (
+                f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
+                f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"{ev_text}"
+                f"I, [Your Name], was a tenant at your property located at [Property Address] "
+                f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
+                f"LEGAL GROUNDS (from database search):\n"
+                f"{section_refs}\n\n"
+                f"Your claim of damages is unsubstantiated. YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] "
+                f"within 15 days, failing which legal proceedings will be initiated.\n\n"
+                f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
+            )
+            notice = DRAFT_DISCLAIMER + notice_content
+        elif case_type == "consumer_dispute":
+            notice_content = (
+                f"LEGAL NOTICE FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
+                f"TO:\n[Seller/Service Provider Name]\n[Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Legal notice for defective goods / deficient services\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"{ev_text}"
+                f"I purchased [Product/Service] from you on [Purchase Date] for Rs. [Amount]. "
+                f"The product is defective / service is deficient.\n\n"
+                f"LEGAL GROUNDS:\n"
+                f"{section_refs}\n\n"
+                f"Note: The Consumer Protection Act, 2019 is the primary law but has not been ingested "
+                f"into our database yet. Please consult a consumer lawyer.\n\n"
+                f"YOU ARE HEREBY CALLED UPON to replace/refund within 15 days.\n\n"
+                f"Yours faithfully,\n[Your Name]"
+            )
+            notice = DRAFT_DISCLAIMER + notice_content
+        elif case_type == "employment_dispute":
+            notice_content = (
+                f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
+                f"TO:\n[Employer/Company Name]\n[Company Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Notice for recovery of unpaid salary of Rs. [Amount]\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"{ev_text}"
+                f"I was employed as [Designation] at [Company Name] since [Start Date]. "
+                f"My salary of Rs. [Amount] remains unpaid.\n\n"
+                f"LEGAL GROUNDS:\n"
+                f"{section_refs}\n\n"
+                f"Note: The Payment of Wages Act, 1936 and Industrial Disputes Act, 1947 are the primary laws "
+                f"but have not been ingested into our database. Please consult an employment lawyer.\n\n"
+                f"YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] within 7 days.\n\n"
+                f"Yours faithfully,\n[Your Name]"
+            )
+            notice = DRAFT_DISCLAIMER + notice_content
+        else:
+            notice_content = (
+                f"LEGAL NOTICE\n\n"
+                f"TO:\n[Recipient Name]\n[Recipient Address]\n\n"
+                f"FROM:\n[Your Name]\n[Your Address]\n\n"
+                f"Date: {now_str}\n\n"
+                f"SUBJECT: Legal notice\n\n"
+                f"Dear Sir/Madam,\n\n"
+                f"{ev_text}"
+                f"I, [Your Name], hereby serve this legal notice upon you.\n\n"
+                f"[Describe the issue briefly]\n\n"
+                f"LAW DOCUMENTS AVAILABLE IN DATABASE:\n"
+                + "\n".join(f"- {d}" for d in AVAILABLE_LAW_DOCS) + "\n\n"
+                f"Your case type does not clearly match our current knowledge base. "
+                f"Please consult a qualified legal professional.\n\n"
+                f"You are called upon to respond within 15 days.\n\n"
+                f"Yours faithfully,\n[Your Name]"
+            )
+            notice = DRAFT_DISCLAIMER + notice_content
+
+        # Inject evidence into all other_docs
+        updated_other = []
+        for doc in other_docs:
+            updated_other.append(DocumentDTO(
+                id=doc.id, case_id=doc.case_id, doc_type=doc.doc_type,
+                title=doc.title,
+                content=doc.content + f"\n\n{ev_section}",
+                status=doc.status, created_at=doc.created_at, updated_at=doc.updated_at,
+            ))
 
         return AnalyzeResponseDTO(
             case_type=case_type,
@@ -187,23 +664,43 @@ class AgentService:
             legal_domain=legal_domain,
             relevant_sections=sections,
             legal_notice_draft=notice,
+            other_documents=updated_other,
             summary=summary,
             next_steps=steps,
-            reasoning_trace="[mock_analysis] API rate limited — using fallback analysis",
+            reasoning_trace="[mock_analysis] API unavailable — using fallback analysis",
             clarifying_questions=[],
-            action_buttons=[ActionButton(label="Generate Legal Notice", message="Generate the legal notice document", style="primary")],
+            action_buttons=[ActionButton(label="Download Documents", message="Download all generated documents", style="primary")],
             ai_message=ai_message,
             case_readiness_score=readiness,
-            evidence_available=evidence_have,
-            evidence_missing=evidence_need,
+            evidence_available=ev_available,
+            evidence_missing=ev_missing,
+            evidence_suggestions=evidence_suggestions,
             risk_level=risk,
-            recommended_actions=[
-                f"Send a formal legal notice to the opposing party",
-                f"Collect and preserve all evidence supporting your claim",
-                f"Consult with a lawyer specializing in {legal_domain} law",
-                f"File a complaint with the appropriate authority if the matter remains unresolved",
-            ],
+            recommended_actions=recommended,
+            is_sufficient=True,
+            law_docs_available=AVAILABLE_LAW_DOCS,
+            law_docs_coverage=coverage,
         )
+
+    async def update_evidence(
+        self,
+        description: str,
+        evidence_available: list[str],
+        evidence_missing: list[str],
+    ) -> AnalyzeResponseDTO:
+        # Re-run full analysis with evidence override — regenerates documents
+        # with evidence baked in at creation time, not appended after
+        base = self._mock_analysis(
+            description,
+            evidence_available_override=evidence_available,
+            evidence_missing_override=evidence_missing,
+        )
+        if not base.is_sufficient:
+            return base
+        total = len(evidence_available) + len(evidence_missing)
+        base.ai_message += f" Evidence status updated: you have {len(evidence_available)} of {total} required items."
+        base.reasoning_trace += f"\n[update_evidence] confirmed={len(evidence_available)}/{total} score={base.case_readiness_score}"
+        return base
 
     async def analyze_case(self, request: AnalyzeRequestDTO) -> AnalyzeResponseDTO:
         description = request.description
