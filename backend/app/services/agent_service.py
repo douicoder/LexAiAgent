@@ -25,7 +25,7 @@ from app.helpers.text_helper import TextHelper
 from app.interfaces.i_rag_service import IRagService
 
 LLM_MODEL = settings.LLM_MODEL
-FAST_MODEL = "gpt-4o"
+FAST_MODEL = "microsoft/Phi-4"
 
 AVAILABLE_LAW_DOCS = [
     "Model Tenancy Act, 2021",
@@ -72,14 +72,17 @@ def _generate_doc_id() -> str:
 
 class AgentService:
     def __init__(self, rag: IRagService):
+        http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0))
         self.client = AsyncOpenAI(
             api_key=settings.GITHUB_TOKEN,
             base_url="https://models.github.ai/inference",
+            http_client=http_client,
         )
-        # Second client with separate token for update_evidence (avoids rate limits)
+        http_client2 = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0))
         self.client2 = AsyncOpenAI(
             api_key=settings.GITHUB_TOKEN_2 or settings.GITHUB_TOKEN,
             base_url="https://models.github.ai/inference",
+            http_client=http_client2,
         )
         self.rag = rag
         self.legal = LegalHelper()
