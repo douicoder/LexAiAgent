@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     LLM_MODEL: str = "gpt-4o"
     SUPABASE_STORAGE_BUCKET: str = "legal-notices"
+    DATABASE: str = "supabase"  # "supabase" | "sqlite"
     
     model_config = SettingsConfigDict(env_file=env_path, extra="ignore")
 

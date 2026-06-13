@@ -97,7 +97,7 @@ async def generate_case_pdf(
     return PdfResponseDTO(
         pdf_url=url,
         pdf_id=case_id,
-        generated_at=str(datetime.datetime.utcnow()),
+        generated_at=str(datetime.datetime.now(datetime.timezone.utc)),
     )
 
 
@@ -129,7 +129,9 @@ async def list_documents(
     current_user_id: str = Depends(AuthHelper.get_current_user_id),
 ):
     supabase = SupabaseService()
-    supabase.get_case(case_id, current_user_id)  # ownership check
+    case = supabase.get_case(case_id, current_user_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
     docs = supabase.get_documents(case_id)
     return [
         DocumentDTO(
@@ -154,7 +156,9 @@ async def update_document(
     current_user_id: str = Depends(AuthHelper.get_current_user_id),
 ):
     supabase = SupabaseService()
-    supabase.get_case(case_id, current_user_id)
+    case = supabase.get_case(case_id, current_user_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
     doc = supabase.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -179,7 +183,9 @@ async def preview_document_pdf(
     current_user_id: str = Depends(AuthHelper.get_current_user_id),
 ):
     supabase = SupabaseService()
-    supabase.get_case(case_id, current_user_id)  # ownership check
+    case = supabase.get_case(case_id, current_user_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
     doc = supabase.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")

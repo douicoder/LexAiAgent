@@ -1,5 +1,5 @@
-import datetime
 import io
+from datetime import date, datetime, timezone
 
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -15,10 +15,9 @@ from supabase import create_client
 
 from app.config import settings
 from app.dto.agent_dto import GeneratePdfDTO, PdfResponseDTO, PersonDetailsDTO
-from app.interfaces.i_pdf_service import IPdfService
 
 
-class PdfService(IPdfService):
+class PdfService:
     def __init__(self):
         self.supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
         self.supabase_admin = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
@@ -37,7 +36,7 @@ class PdfService(IPdfService):
         return PdfResponseDTO(
             pdf_url=url,
             pdf_id=case_id,
-            generated_at=str(datetime.datetime.utcnow()),
+            generated_at=str(datetime.now(timezone.utc)),
         )
 
     # ── Public: new methods ────────────────────────────────────────────────
@@ -124,7 +123,7 @@ class PdfService(IPdfService):
         elements.append(Spacer(1, 10))
 
         # Date (right) and Case Type (left)
-        today = datetime.date.today().strftime("%B %d, %Y")
+        today = date.today().strftime("%B %d, %Y")
         date_right = ParagraphStyle(
             "DateRight", parent=normal, alignment=TA_RIGHT
         )

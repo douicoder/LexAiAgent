@@ -2,7 +2,6 @@ import ast
 import logging
 
 import numpy as np
-from fastapi import HTTPException, status
 from openai import OpenAI
 from postgrest.exceptions import APIError
 from supabase import create_client
@@ -27,19 +26,13 @@ def _squash_bm25(score: float) -> float:
 class RagService(IRagService):
     def __init__(self):
         if not settings.GITHUB_TOKEN:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="GITHUB_TOKEN is required for RAG embeddings.",
-            )
+            raise ValueError("GITHUB_TOKEN is required for RAG embeddings.")
         self.client = OpenAI(
             api_key=settings.GITHUB_TOKEN,
             base_url="https://models.github.ai/inference",
         )
         if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="SUPABASE_URL and SUPABASE_KEY must be set.",
-            )
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set.")
         self.supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
         self.embedding_model = settings.EMBEDDING_MODEL
 

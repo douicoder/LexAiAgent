@@ -1,5 +1,5 @@
-import datetime
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -21,8 +21,8 @@ class CaseMessage(Base):
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     extra_data: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime.datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.datetime.utcnow,
+        default=datetime.now(timezone.utc),
         nullable=False,
     )

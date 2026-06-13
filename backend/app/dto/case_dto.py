@@ -33,6 +33,7 @@ class LegalSectionDTO(BaseModel):
     title: str
     excerpt: str | None = None
     relevance_score: float
+    explanation: str = ""
 
 
 class CreateCaseDTO(BaseModel):
@@ -53,6 +54,12 @@ class CaseResponseDTO(BaseModel):
     ai_message: str | None = None
     clarifying_questions: list[ClarifyingQuestion] = []
     action_buttons: list[ActionButton] = []
+    legal_domain: str | None = None
+    case_readiness_score: int = 0
+    evidence_available: list[str] = []
+    evidence_missing: list[str] = []
+    risk_level: str = "medium"
+    recommended_actions: list[str] = []
 
 
 class CaseDetailDTO(CaseResponseDTO):

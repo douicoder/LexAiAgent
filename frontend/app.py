@@ -19,7 +19,7 @@ def create_app() -> Flask:
     def root():
         if is_authenticated():
             return redirect(url_for("dashboard.index"))
-        return redirect(url_for("auth.login"))
+        return redirect(url_for("demo.demo"))
 
     @app.context_processor
     def inject_globals():

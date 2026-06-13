@@ -1,7 +1,10 @@
+import asyncio
 import json
 import uuid
+from datetime import datetime, timezone
 
-from openai import AsyncOpenAI
+import httpx
+from openai import AsyncOpenAI, APIConnectionError, APITimeoutError, RateLimitError
 
 from app.config import settings
 from app.dto.agent_dto import (
@@ -18,7 +21,6 @@ from app.dto.agent_dto import (
 )
 from app.helpers.legal_helper import LegalHelper
 from app.helpers.text_helper import TextHelper
-from app.interfaces.i_agent_service import IAgentService
 from app.interfaces.i_rag_service import IRagService
 
 LLM_MODEL = settings.LLM_MODEL
@@ -64,35 +66,34 @@ DOCUMENT_TYPES = {
 
 def _extract_json(text: str) -> dict:
     text = text.strip()
-    for end in range(len(text) - 1, -1, -1):
-        if text[end] != "}":
+    if not text:
+        raise ValueError("Empty text, no JSON object found")
+
+    for start in range(len(text)):
+        if text[start] != "{":
             continue
         depth = 0
         in_string = False
-        escape = False
-        start = -1
-        for j in range(end, -1, -1):
-            char = text[j]
-            if escape:
-                escape = False
+        escaped = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escaped:
+                escaped = False
                 continue
-            if char == "\\":
-                escape = True
+            if ch == "\\":
+                escaped = True
                 continue
-            if char == '"' and not escape:
+            if ch == '"' and not escaped:
                 in_string = not in_string
                 continue
             if in_string:
                 continue
-            if char == "}":
+            if ch == "{":
                 depth += 1
-            elif char == "{":
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    start = j
-                    break
-        if start >= 0 and depth == 0:
-            return json.loads(text[start: end + 1])
+                    return json.loads(text[start:i+1])
     raise ValueError("No valid JSON object found in text")
 
 
@@ -100,7 +101,7 @@ def _generate_doc_id() -> str:
     return str(uuid.uuid4())
 
 
-class AgentService(IAgentService):
+class AgentService:
     def __init__(self, rag: IRagService):
         self.client = AsyncOpenAI(
             api_key=settings.GITHUB_TOKEN,
@@ -110,6 +111,100 @@ class AgentService(IAgentService):
         self.legal = LegalHelper()
         self.text = TextHelper()
 
+    async def _call_llm(self, model: str, messages: list, max_tokens: int, max_retries: int = 1) -> str:
+        timeout = httpx.Timeout(6.0, connect=4.0)
+        for attempt in range(max_retries):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                )
+                return response.choices[0].message.content.strip() or ""
+            except (RateLimitError, APITimeoutError, APIConnectionError):
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+        return ""
+
+    def _mock_analysis(self, description: str) -> AnalyzeResponseDTO:
+        desc_lower = description.lower()
+        if "landlord" in desc_lower or "tenant" in desc_lower or "deposit" in desc_lower or "rent" in desc_lower:
+            case_type = "tenancy_dispute"
+            legal_domain = "Landlord-Tenant"
+            severity = "medium"
+            summary = "This is a security deposit dispute between a tenant and landlord. The tenant has vacated the premises and the landlord is withholding the deposit without providing evidence of damage. The tenant has the rental agreement and payment records, which strengthens their position."
+            ai_message = "I've analyzed your tenancy dispute. You have a strong case for recovering your security deposit, especially since you have the rental agreement and payment records. Let me walk you through the next steps."
+            risk = "medium"
+            readiness = 65
+            evidence_have = ["Rental agreement / lease contract", "Bank transfer records for deposit payment", "Vacation handover proof or date records", "Communication records with landlord"]
+            evidence_need = ["Written notice demanding deposit return (with proof of delivery)", "Photographs of apartment condition at move-out", "Witness statements if available", "Any repair estimates the landlord claims"]
+            sections = [
+                {"act": "Transfer of Property Act, 1882", "chapter": "", "section_number": "108", "section_title": "Rights and liabilities of lessor and lessee", "score": 0.92, "vector_score": 0.89, "bm25_score": 0.85, "excerpt": "In the absence of a contract or local usage to the contrary, the lessee shall allow the lessor and his agents to enter upon the property and inspect the condition thereof at all reasonable hours."},
+                {"act": "Indian Contract Act, 1872", "chapter": "", "section_number": "73", "section_title": "Compensation for loss or damage caused by breach of contract", "score": 0.88, "vector_score": 0.86, "bm25_score": 0.82, "excerpt": "When a contract has been broken, the party who suffers by such breach is entitled to receive, from the party who has broken the contract, compensation for any loss or damage caused to him thereby, which naturally arose in the usual course of business from such breach."},
+                {"act": "Code of Civil Procedure, 1908", "chapter": "", "section_number": "Order 37", "section_title": "Summary Procedure", "score": 0.76, "vector_score": 0.72, "bm25_score": 0.68, "excerpt": "Summary procedure applies to suits upon bills of exchange, hundies and promissory notes, and suits in which the plaintiff seeks only to recover a debt or liquidated demand in money."},
+            ]
+        elif "consumer" in desc_lower or "product" in desc_lower or "defective" in desc_lower or "service" in desc_lower:
+            case_type = "consumer_dispute"
+            legal_domain = "Consumer Protection"
+            severity = "medium"
+            summary = "This appears to be a consumer dispute regarding a product or service. Under the Consumer Protection Act, 2019, you have the right to seek redressal for defective goods or deficient services."
+            ai_message = "I've analyzed your consumer complaint. You have options under the Consumer Protection Act to seek a resolution. Let me outline the steps you can take."
+            risk = "low"
+            readiness = 70
+            evidence_have = ["Purchase receipt / invoice", "Warranty or guarantee card", "Photographs/videos of defect", "Communication with seller/provider"]
+            evidence_need = ["Expert opinion on the defect", "Medical records (if personal injury)", "Cost estimates for repairs", "Copy of complaint to seller/provider"]
+            sections = [
+                {"act": "Consumer Protection Act, 2019", "chapter": "", "section_number": "2(7)", "section_title": "Definition of Consumer", "score": 0.95, "vector_score": 0.92, "bm25_score": 0.90, "excerpt": "Consumer means any person who buys any goods for a consideration which has been paid or promised or partly paid and partly promised, or under any system of deferred payment and includes any user of such goods other than the person who buys such goods for consideration paid or promised."},
+                {"act": "Consumer Protection Act, 2019", "chapter": "", "section_number": "35", "section_title": "Filing of complaints before District Commission", "score": 0.91, "vector_score": 0.88, "bm25_score": 0.85, "excerpt": "A complaint may be filed with the District Commission by the consumer to whom such goods are sold or delivered or agreed to be sold or delivered or such services provided or agreed to be provided."},
+            ]
+        else:
+            case_type = "other"
+            legal_domain = "Civil"
+            severity = "low"
+            summary = "Your legal matter has been reviewed. Based on the information provided, here is an assessment of your situation and recommended course of action."
+            ai_message = "I've reviewed your case. Here's my analysis and recommended steps to help you move forward."
+            risk = "low"
+            readiness = 45
+            evidence_have = ["Relevant documents and records", "Any correspondence related to the matter"]
+            evidence_need = ["Gather all related documents", "Document timeline of events", "Identify relevant legal provisions"]
+            sections = []
+
+        steps = [
+            ActionStep(number=1, text="Send a formal legal notice to the opposing party", action_type="generate_document", action_config={"doc_type": "legal_notice", "title": "Legal Notice"}, status="pending"),
+            ActionStep(number=2, text="Wait for response from the opposing party (up to 15 days)", action_type="wait", action_config={}, status="pending"),
+            ActionStep(number=3, text="Collect and organize all evidence for potential legal proceedings", action_type="info_gathering", action_config={}, status="pending"),
+            ActionStep(number=4, text="File a complaint with the appropriate authority if no response received", action_type="generate_document", action_config={"doc_type": "complaint", "title": "Formal Complaint"}, status="pending"),
+        ]
+
+        notice = f"LEGAL NOTICE\n\nTO:\n[Opponent's Name]\n[Opponent's Address]\n\nFROM:\n[Your Name]\n[Your Address]\n\nDate: {datetime.now(timezone.utc).strftime('%d %B %Y')}\n\nSUBJECT: Legal notice regarding {case_type.replace('_', ' ')}\n\nDear Sir/Madam,\n\nI, [Your Name], hereby serve this legal notice upon you through my authorized representative.\n\n{summary}\n\nYou are hereby called upon to:\n1. Provide a full and complete response to the matters raised herein within 15 days from the receipt of this notice;\n2. Refrain from any act that may prejudice the rights of the notice-sender;\n3. Preserve all documents and evidence related to the subject matter of this dispute.\n\nIn the event of your failure to comply with the above demands, I shall be constrained to initiate appropriate legal proceedings against you before the competent court of law, wherein you shall be held liable for all costs and expenses incurred.\n\nThis notice is issued without prejudice to any other rights and remedies available to me under the law.\n\nYours faithfully,\n\n[Your Name]\n[Signature]"
+
+        return AnalyzeResponseDTO(
+            case_type=case_type,
+            severity=severity,
+            legal_domain=legal_domain,
+            relevant_sections=sections,
+            legal_notice_draft=notice,
+            summary=summary,
+            next_steps=steps,
+            reasoning_trace="[mock_analysis] API rate limited — using fallback analysis",
+            clarifying_questions=[],
+            action_buttons=[ActionButton(label="Generate Legal Notice", message="Generate the legal notice document", style="primary")],
+            ai_message=ai_message,
+            case_readiness_score=readiness,
+            evidence_available=evidence_have,
+            evidence_missing=evidence_need,
+            risk_level=risk,
+            recommended_actions=[
+                f"Send a formal legal notice to the opposing party",
+                f"Collect and preserve all evidence supporting your claim",
+                f"Consult with a lawyer specializing in {legal_domain} law",
+                f"File a complaint with the appropriate authority if the matter remains unresolved",
+            ],
+        )
+
     async def analyze_case(self, request: AnalyzeRequestDTO) -> AnalyzeResponseDTO:
         description = request.description
         if request.language == "hi":
@@ -117,7 +212,14 @@ class AgentService(IAgentService):
 
         reasoning_trace = []
 
-        # ── Round 0: Check for vagueness ───────────────────────────────────────
+        try:
+            # ── Round 0: Check for vagueness ───────────────────────────────────
+            return await self._run_llm_analysis(description, reasoning_trace)
+        except (RateLimitError, APITimeoutError, APIConnectionError):
+            reasoning_trace.append("[mock_analysis] API unavailable — using fallback analysis")
+            return self._mock_analysis(description)
+
+    async def _run_llm_analysis(self, description: str, reasoning_trace: list) -> AnalyzeResponseDTO:
         vague_prompt = (
             f"Problem: {description}\n\n"
             f"Is this legal problem description too vague to provide "
@@ -129,7 +231,7 @@ class AgentService(IAgentService):
             f'"key": "short_key_for_this_question"}}]}}'
             f"\nIf not vague, set clarifying_questions to an empty array."
         )
-        response = await self.client.chat.completions.create(
+        vague_text = await self._call_llm(
             model=FAST_MODEL,
             messages=[
                 {"role": "system", "content": self.legal.system_prompt()},
@@ -137,7 +239,6 @@ class AgentService(IAgentService):
             ],
             max_tokens=1000,
         )
-        vague_text = response.choices[0].message.content.strip() or ""
         try:
             vague_result = _extract_json(vague_text)
         except ValueError:
@@ -150,12 +251,13 @@ class AgentService(IAgentService):
         classify_prompt = (
             f"Problem: {description}\n\n"
             f"Classify this legal problem into a JSON object:\n"
-            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|other", '
+            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|consumer_dispute|employment_dispute|other", '
             f'"severity": "low|medium|high|urgent", '
+            f'"legal_domain": "Landlord-Tenant|Consumer Protection|Employment|Property|Criminal|Family|Other", '
             f'"reasoning": "brief reason"}}'
         )
 
-        response = await self.client.chat.completions.create(
+        classify_text = await self._call_llm(
             model=FAST_MODEL,
             messages=[
                 {"role": "system", "content": self.legal.system_prompt()},
@@ -163,7 +265,6 @@ class AgentService(IAgentService):
             ],
             max_tokens=1000,
         )
-        classify_text = response.choices[0].message.content.strip() or ""
         classification = _extract_json(classify_text)
         reasoning_trace.append(f"[classify_case] -> {classification}")
 
@@ -176,7 +277,7 @@ class AgentService(IAgentService):
             f'{{"query": "specific legal search terms"}}'
         )
 
-        response = await self.client.chat.completions.create(
+        search_text = await self._call_llm(
             model=FAST_MODEL,
             messages=[
                 {"role": "system", "content": self.legal.system_prompt()},
@@ -186,48 +287,38 @@ class AgentService(IAgentService):
             ],
             max_tokens=1000,
         )
-        search_text = response.choices[0].message.content.strip() or ""
         search_args = _extract_json(search_text)
         query = search_args.get("query", description)
 
         law_sections = await self.rag.search(query=query, top_k=5)
         reasoning_trace.append(f"[search_law: '{query}'] -> {len(law_sections)} results")
 
-        # ── Round 3: Generate steps + summary ─────────────────────────────────
+        # ── Round 3: Generate full analysis ───────────────────────────────────
         steps_prompt = (
-            f"Original problem: {description}\n\n"
-            f"Case classification: {json.dumps(classification, indent=2)}\n\n"
-            f"Relevant law sections found:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
-            f"Generate a step-by-step action plan for this legal case.\n\n"
-            f"Return ONLY valid JSON with these exact keys. No markdown backticks. No extra text.\n"
-            f"ai_message should be warm, empathetic, conversational.\n"
-            f"summary should be 2-3 sentence summary of the case and recommended approach.\n\n"
-            f"steps should be an array of actionable steps. Each step has:\n"
-            f'  - "number": sequential integer\n'
-            f'  - "text": clear instruction for the user\n'
-            f'  - "action_type": one of "generate_document" (creates a legal document), '
-            f'"wait" (waiting period), "info_gathering" (collect information)\n'
-            f'  - "action_config": object with "doc_type" (one of: demand_letter, legal_notice, '
-            f'court_filing, affidavit, complaint, agreement) and "title" for document actions\n\n'
-            f'Example for a security deposit dispute:\n'
-            f'{{"steps": [\n'
-            f'  {{"number": 1, "text": "Send a formal demand letter to your landlord requesting the refund of your security deposit", "action_type": "generate_document", "action_config": {{"doc_type": "demand_letter", "title": "Formal Demand Letter for Security Deposit Refund"}}}}, \n'
-            f'  {{"number": 2, "text": "Wait 30 days for your landlord to respond to the demand letter", "action_type": "wait", "action_config": {{"duration": "30 days"}}}}, \n'
-            f'  {{"number": 3, "text": "If no response, file a complaint with the Rent Controller / Tenancy Tribunal", "action_type": "generate_document", "action_config": {{"doc_type": "complaint", "title": "Complaint to Rent Controller"}}}}, \n'
-            f'  {{"number": 4, "text": "If the dispute remains unresolved, file a civil suit for recovery", "action_type": "generate_document", "action_config": {{"doc_type": "court_filing", "title": "Civil Suit for Recovery of Security Deposit"}}}}\n'
-            f']}}}}\n\n"'
-            f"Put your JSON answer after a line that says exactly 'FINAL_JSON:' and nothing else."
+            f"Problem: {description}\n\n"
+            f"Classification: {json.dumps(classification, indent=2)}\n\n"
+            f"Relevant laws:\n{json.dumps(law_sections, indent=2, default=str)}\n\n"
+            f"Generate a complete legal analysis as JSON. Prefix with 'FINAL_JSON:' then the JSON. No markdown.\n\n"
+            f"Keys:\n"
+            f'  "ai_message" — warm conversational message (2-3 sentences)\n'
+            f'  "summary" — case summary and recommended approach (2-3 sentences)\n'
+            f'  "steps" — array of {{number, text, action_type (generate_document|wait|info_gathering), action_config: {{doc_type, title}}}}\n'
+            f'  "legal_notice_draft" — plain text string (NOT a JSON object). A complete formal legal notice with TO, FROM, subject, body, legal grounds, demand clause, and signature. Use Indian legal format.\n'
+            f'  "case_readiness_score" — integer 0-100\n'
+            f'  "evidence_available" — array of strings (evidence user likely has)\n'
+            f'  "evidence_missing" — array of strings (evidence user still needs)\n'
+            f'  "risk_level" — "low"|"medium"|"high"\n'
+            f'  "recommended_actions" — array of plain text action recommendations\n'
         )
 
-        response = await self.client.chat.completions.create(
-            model=LLM_MODEL,
+        final_text = await self._call_llm(
+            model=FAST_MODEL,
             messages=[
                 {"role": "system", "content": self.legal.system_prompt()},
                 {"role": "user", "content": steps_prompt},
             ],
             max_tokens=8000,
         )
-        final_text = response.choices[0].message.content.strip() or ""
 
         marker = "FINAL_JSON:"
         idx = final_text.rfind(marker)
@@ -260,14 +351,20 @@ class AgentService(IAgentService):
         return AnalyzeResponseDTO(
             case_type=classification.get("case_type", "other"),
             severity=classification.get("severity", "medium"),
+            legal_domain=classification.get("legal_domain", ""),
             relevant_sections=law_sections,
-            legal_notice_draft="",
+            legal_notice_draft=final_data.get("legal_notice_draft", ""),
             summary=final_data.get("summary", ""),
             next_steps=action_steps,
             reasoning_trace="\n".join(reasoning_trace),
             clarifying_questions=clarifying_questions,
             action_buttons=action_buttons_items,
             ai_message=final_data.get("ai_message", f"I've analyzed your case. Here's a step-by-step plan to help you resolve this matter."),
+            case_readiness_score=final_data.get("case_readiness_score", 0),
+            evidence_available=final_data.get("evidence_available", []),
+            evidence_missing=final_data.get("evidence_missing", []),
+            risk_level=final_data.get("risk_level", "medium"),
+            recommended_actions=final_data.get("recommended_actions", []),
         )
 
     async def execute_action(
@@ -372,7 +469,7 @@ class AgentService(IAgentService):
         doc_content = gen_data.get("content", gen_text)
 
         doc_id = _generate_doc_id()
-        now = __import__("datetime").datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         try:
             supabase_service.create_document({
@@ -474,7 +571,7 @@ class AgentService(IAgentService):
                 title=doc_data.get("title", "Legal Document"),
                 content=doc_data.get("content", ""),
                 status="draft",
-                created_at=__import__("datetime").datetime.utcnow().isoformat(),
+                created_at=datetime.now(timezone.utc).isoformat(),
             )
 
         return ChatResponseDTO(

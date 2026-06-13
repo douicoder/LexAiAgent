@@ -1,5 +1,5 @@
-import datetime
 import uuid
+from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, JSON, String, Text
@@ -19,9 +19,9 @@ class LawChunk(Base):
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding = mapped_column(Vector(1536))
     chunk_index: Mapped[str | None] = mapped_column(String)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
-    created_at: Mapped[datetime.datetime] = mapped_column(
+    extra_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.datetime.utcnow,
+        default=datetime.now(timezone.utc),
         nullable=False,
     )

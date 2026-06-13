@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agent, auth, cases, documents, voice
+from app.api import agent, auth, cases, demo, documents, voice
 from app.config import settings
 from app.database import create_tables
 
@@ -13,7 +13,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +23,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(cases.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(demo.router, prefix="")
 app.include_router(voice.router, prefix="/api/v1")
 
 

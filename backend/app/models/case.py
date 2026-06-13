@@ -1,7 +1,7 @@
-import datetime
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,12 +33,18 @@ class Case(Base):
     clarifying_questions: Mapped[list] = mapped_column(JSON, default=list)
     action_buttons: Mapped[list] = mapped_column(JSON, default=list)
     ai_message: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime.datetime] = mapped_column(
+    legal_domain: Mapped[str | None] = mapped_column(String)
+    case_readiness_score: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_available: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_missing: Mapped[list] = mapped_column(JSON, default=list)
+    risk_level: Mapped[str] = mapped_column(String, default="medium")
+    recommended_actions: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.datetime.utcnow,
+        default=datetime.now(timezone.utc),
         nullable=False,
     )
-    updated_at: Mapped[datetime.datetime | None] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime,
-        onupdate=datetime.datetime.utcnow,
+        onupdate=datetime.now(timezone.utc),
     )

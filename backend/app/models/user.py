@@ -1,5 +1,5 @@
-import datetime
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -16,12 +16,12 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     preferred_language: Mapped[str] = mapped_column(String, default="en", nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.datetime.utcnow,
+        default=datetime.now(timezone.utc),
         nullable=False,
     )
-    updated_at: Mapped[datetime.datetime | None] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime,
-        onupdate=datetime.datetime.utcnow,
+        onupdate=datetime.now(timezone.utc),
     )

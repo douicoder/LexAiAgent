@@ -1,18 +1,20 @@
+import logging
 import uuid
 
 from fastapi import HTTPException
 
+logger = logging.getLogger(__name__)
+
 from app.dto.agent_dto import AnalyzeRequestDTO
 from app.dto.case_dto import CaseDetailDTO, CaseListResponseDTO, CaseResponseDTO, CreateCaseDTO
-from app.interfaces.i_agent_service import IAgentService
-from app.interfaces.i_case_service import ICaseService
+from app.services.agent_service import AgentService
 from app.mapper.auto_mapper import AutoMapper
 from app.services.case_message_service import CaseMessageService
 from app.services.supabase_db import SupabaseService
 
 
-class CaseService(ICaseService):
-    def __init__(self, supabase: SupabaseService, agent: IAgentService | None = None):
+class CaseService:
+    def __init__(self, supabase: SupabaseService, agent: AgentService | None = None):
         self.supabase = supabase
         self.agent = agent
 
@@ -62,6 +64,19 @@ class CaseService(ICaseService):
             "action_buttons": [ab.model_dump() for ab in (result.action_buttons or [])],
         })
 
+        # Save v2 fields (may fail if Supabase table lacks columns — handle gracefully)
+        try:
+            self.supabase.update_case(case_id, {
+                "legal_domain": result.legal_domain,
+                "case_readiness_score": result.case_readiness_score,
+                "evidence_available": result.evidence_available,
+                "evidence_missing": result.evidence_missing,
+                "risk_level": result.risk_level,
+                "recommended_actions": result.recommended_actions,
+            })
+        except Exception as e:
+            logger.warning("Could not save v2 analysis fields (columns may not exist yet): %s", e)
+
         msg_service = CaseMessageService(self.supabase)
         msg_service.add_message(case_id, "user", dto.description)
         msg_service.add_message(
@@ -69,15 +84,29 @@ class CaseService(ICaseService):
             extra_data={
                 "case_type": result.case_type,
                 "severity": result.severity,
+                "legal_domain": result.legal_domain,
                 "summary": result.summary,
                 "legal_notice_draft": result.legal_notice_draft,
                 "relevant_sections": result.relevant_sections,
                 "next_steps": [ns.model_dump() for ns in (result.next_steps or [])],
                 "reasoning_trace": result.reasoning_trace,
+                "case_readiness_score": result.case_readiness_score,
+                "evidence_available": result.evidence_available,
+                "evidence_missing": result.evidence_missing,
+                "risk_level": result.risk_level,
+                "recommended_actions": result.recommended_actions,
             },
         )
 
-        return AutoMapper.case_to_response_dto(updated)
+        # Merge agent data into DB response (v2 fields may not be saved to Supabase yet)
+        dto = AutoMapper.case_to_response_dto(updated)
+        dto.legal_domain = result.legal_domain or dto.legal_domain
+        dto.case_readiness_score = result.case_readiness_score or dto.case_readiness_score
+        dto.evidence_available = result.evidence_available or dto.evidence_available
+        dto.evidence_missing = result.evidence_missing or dto.evidence_missing
+        dto.risk_level = result.risk_level or dto.risk_level
+        dto.recommended_actions = result.recommended_actions or dto.recommended_actions
+        return dto
 
     async def get_case(self, case_id: str, user_id: str) -> CaseDetailDTO:
         case = self.supabase.get_case(case_id, user_id)

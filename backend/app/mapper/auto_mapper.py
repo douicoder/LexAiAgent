@@ -36,6 +36,12 @@ class AutoMapper:
             ai_message=case.get("ai_message"),
             clarifying_questions=case.get("clarifying_questions") or [],
             action_buttons=case.get("action_buttons") or [],
+            legal_domain=case.get("legal_domain"),
+            case_readiness_score=case.get("case_readiness_score", 0),
+            evidence_available=case.get("evidence_available") or [],
+            evidence_missing=case.get("evidence_missing") or [],
+            risk_level=case.get("risk_level", "medium"),
+            recommended_actions=case.get("recommended_actions") or [],
         )
 
     @staticmethod

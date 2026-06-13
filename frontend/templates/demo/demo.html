@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LexAgent Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-dot { 0%, 80%, 100% { opacity: 0; } 40% { opacity: 1; } }
+    .dot-pulse::after { content: ''; animation: pulse-dot 1.4s infinite; }
+    .dot-pulse::before { content: ''; animation: pulse-dot 1.4s infinite; animation-delay: 0.2s; }
+    .step-active { border-left: 4px solid #2563EB; background: #EFF6FF; }
+    .step-done { border-left: 4px solid #10B981; background: #F0FDF4; }
+    .step-pending { border-left: 4px solid #D1D5DB; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fade-in 0.4s ease-out; }
+    @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-up { animation: slide-up 0.5s ease-out; }
+    @keyframes fill-bar { from { width: 0%; } }
+    .fill-bar { animation: fill-bar 1s ease-out; }
+    .progress-step { transition: all 0.3s ease; }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans antialiased">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">LexAgent</h1>
+      <p class="text-gray-500 mt-1">Autonomous Legal Aid Agent — AI-Powered Legal Notice Generator</p>
+    </div>
+
+    <!-- Step 1: Problem Description -->
+    <div id="step-input" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 fade-in">
+      <h2 class="text-lg font-semibold text-gray-800 mb-1">Describe Your Legal Problem</h2>
+      <p class="text-sm text-gray-500 mb-4">Tell us about your situation. We'll analyze it and generate a complete legal assessment.</p>
+      <textarea id="problem-input" rows="4" class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="e.g. My landlord is refusing to return my ₹50,000 security deposit even though I vacated the apartment 3 months ago and left it in perfect condition..."></textarea>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button onclick="fillScenario(1)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors">Landlord deposit</button>
+        <button onclick="fillScenario(2)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors">Defective laptop</button>
+        <button onclick="fillScenario(3)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors">Salary withheld</button>
+      </div>
+      <button id="analyze-btn" onclick="analyze()" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Analyze Case
+      </button>
+    </div>
+
+    <!-- Progress Steps -->
+    <div id="progress-section" class="hidden mb-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Analysis Progress</h3>
+        <div class="space-y-2">
+          <div id="prog-classify" class="progress-step flex items-center gap-3 p-2 rounded-lg step-pending">
+            <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" id="icon-classify"></div>
+            <span class="text-sm text-gray-500" id="label-classify">Classifying case type & legal domain...</span>
+          </div>
+          <div id="prog-laws" class="progress-step flex items-center gap-3 p-2 rounded-lg step-pending">
+            <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" id="icon-laws"></div>
+            <span class="text-sm text-gray-500" id="label-laws">Searching relevant Indian laws...</span>
+          </div>
+          <div id="prog-assess" class="progress-step flex items-center gap-3 p-2 rounded-lg step-pending">
+            <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" id="icon-assess"></div>
+            <span class="text-sm text-gray-500" id="label-assess">Assessing case readiness & risk...</span>
+          </div>
+          <div id="prog-notice" class="progress-step flex items-center gap-3 p-2 rounded-lg step-pending">
+            <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" id="icon-notice"></div>
+            <span class="text-sm text-gray-500" id="label-notice">Drafting legal notice...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-section" class="hidden space-y-6">
+      <!-- Case Type & Severity -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 slide-up">
+        <div class="flex flex-wrap gap-4 items-start justify-between">
+          <div>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Case Type</h3>
+            <p id="result-case-type" class="text-lg font-semibold text-gray-900 mt-1 capitalize"></p>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Legal Domain</h3>
+            <p id="result-legal-domain" class="text-lg font-semibold text-gray-900 mt-1"></p>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Severity</h3>
+            <p id="result-severity" class="mt-1"></p>
+          </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-100">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">AI Summary</h3>
+          <p id="result-summary" class="text-sm text-gray-700 mt-1 leading-relaxed"></p>
+        </div>
+      </div>
+
+      <!-- Legal Grounding -->
+      <div id="law-sections-section" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 slide-up">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3">Legal Grounding</h3>
+        <div id="law-sections-list" class="space-y-3"></div>
+      </div>
+
+      <!-- Case Readiness Assessment -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 slide-up">
+        <h3 class="text-sm font-semibold text-gray-800 mb-4">Case Readiness Assessment</h3>
+        <div class="flex items-center gap-4 mb-4">
+          <div class="flex-shrink-0">
+            <div class="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-bold" id="readiness-circle"></div>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-gray-700">Case Readiness Score</p>
+            <p class="text-xs text-gray-400 mt-1">How prepared you are to take legal action</p>
+          </div>
+          <div class="ml-auto">
+            <span id="risk-badge" class="inline-block px-3 py-1 rounded-full text-sm font-medium"></span>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div>
+            <h4 class="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">Evidence Available</h4>
+            <ul id="evidence-available-list" class="space-y-1"></ul>
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-2">Evidence Needed</h4>
+            <ul id="evidence-missing-list" class="space-y-1"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Plan -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 slide-up">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3">Recommended Action Plan</h3>
+        <ol id="action-plan-list" class="space-y-2"></ol>
+      </div>
+
+      <!-- Legal Notice -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 slide-up">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-gray-800">Legal Notice Draft</h3>
+          <button id="generate-notice-btn" onclick="downloadPdf()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            Download PDF
+          </button>
+        </div>
+        <textarea id="notice-draft" rows="16" class="w-full border border-gray-200 rounded-lg p-4 text-sm font-mono leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gray-50"></textarea>
+        <p class="text-xs text-gray-400 mt-2">You can edit the notice draft above before downloading.</p>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="error-section" class="hidden bg-red-50 border border-red-200 rounded-xl p-6 mt-6">
+      <p id="error-message" class="text-red-700 text-sm"></p>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center mt-8 pb-8">
+      <p class="text-xs text-gray-400">LexAgent Demo — For demonstration purposes only. Not legal advice.</p>
+    </div>
+  </div>
+
+  <script>
+    const API = "http://localhost:8002/api/v1/demo";
+
+    const scenarios = {
+      1: "My landlord is refusing to return my ₹50,000 security deposit. I vacated the apartment 3 months ago and left it in perfect condition. He claims there was damage but has provided no evidence or photos. I have the original rental agreement and bank transfer records for the deposit payment.",
+      2: "I purchased a laptop for ₹65,000 from an online store 2 weeks ago. It has a manufacturing defect - the screen flickers constantly and the battery drains within 30 minutes. The seller is refusing to replace it or issue a refund, saying I need to get it repaired at my own cost. I have the invoice and warranty card.",
+      3: "My employer has not paid my salary for the last 2 months (₹1,20,000 total). They keep giving excuses about cash flow problems but have not given me any written communication about the delay. I have my appointment letter, monthly payslips, and bank statements showing no salary credits for 2 months.",
+    };
+
+    function fillScenario(n) {
+      document.getElementById("problem-input").value = scenarios[n] || "";
+    }
+
+    function setProgress(step) {
+      const steps = ["classify", "laws", "assess", "notice"];
+      const idx = steps.indexOf(step);
+      steps.forEach((s, i) => {
+        const icon = document.getElementById("icon-" + s);
+        const label = document.getElementById("label-" + s);
+        const prog = document.getElementById("prog-" + s);
+        if (i < idx) {
+          prog.className = "progress-step flex items-center gap-3 p-2 rounded-lg step-done";
+          icon.className = "w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center";
+          icon.innerHTML = '<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+          label.className = "text-sm text-green-700";
+        } else if (i === idx) {
+          prog.className = "progress-step flex items-center gap-3 p-2 rounded-lg step-active";
+          icon.className = "w-5 h-5 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center";
+          icon.innerHTML = '<div class="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></div>';
+          label.className = "text-sm text-blue-700 font-medium";
+        } else {
+          prog.className = "progress-step flex items-center gap-3 p-2 rounded-lg step-pending";
+          icon.className = "w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0";
+          icon.innerHTML = "";
+          label.className = "text-sm text-gray-500";
+        }
+      });
+    }
+
+    async function analyze() {
+      const input = document.getElementById("problem-input");
+      const description = input.value.trim();
+      if (!description) { alert("Please describe your legal problem."); return; }
+
+      document.getElementById("analyze-btn").disabled = true;
+      document.getElementById("analyze-btn").textContent = "Analyzing...";
+      document.getElementById("progress-section").classList.remove("hidden");
+      document.getElementById("results-section").classList.add("hidden");
+      document.getElementById("error-section").classList.add("hidden");
+
+      setProgress("classify");
+
+      const progressTimer = setInterval(() => {
+        const el = document.querySelector(".step-active");
+        if (!el) return;
+        const id = el.id.replace("prog-", "");
+        const map = { classify: "laws", laws: "assess", assess: "notice" };
+        const next = map[id];
+        if (next) setProgress(next);
+      }, 1200);
+
+      try {
+        const res = await fetch(API + "/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description }),
+        });
+        if (!res.ok) throw new Error("Server error: " + res.statusText);
+
+        clearInterval(progressTimer);
+        setProgress("notice");
+
+        const data = await res.json();
+        setTimeout(() => displayResults(data), 300);
+      } catch (err) {
+        clearInterval(progressTimer);
+        document.getElementById("error-section").classList.remove("hidden");
+        document.getElementById("error-message").textContent = err.message;
+      } finally {
+        document.getElementById("analyze-btn").disabled = false;
+        document.getElementById("analyze-btn").textContent = "Analyze Case";
+      }
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function displayResults(data) {
+      document.getElementById("results-section").classList.remove("hidden");
+      document.getElementById("progress-section").classList.add("hidden");
+
+      // Case type
+      document.getElementById("result-case-type").textContent = (data.case_type || "other").replace(/_/g, " ");
+
+      // Legal domain
+      document.getElementById("result-legal-domain").textContent = data.legal_domain || "Civil";
+
+      // Severity badge
+      const sev = document.getElementById("result-severity");
+      const sv = data.severity || "medium";
+      const colors = { low: "bg-green-100 text-green-700", medium: "bg-yellow-100 text-yellow-700", high: "bg-orange-100 text-orange-700", urgent: "bg-red-100 text-red-700" };
+      sev.className = "mt-1 inline-block px-3 py-1 rounded-full text-sm font-medium " + (colors[sv] || "bg-gray-100 text-gray-700");
+      sev.textContent = sv.charAt(0).toUpperCase() + sv.slice(1);
+
+      // Summary
+      document.getElementById("result-summary").textContent = data.summary || "No summary available.";
+
+      // Law sections
+      const lawContainer = document.getElementById("law-sections-list");
+      lawContainer.innerHTML = "";
+      const sections = data.relevant_sections || [];
+      if (sections.length === 0) {
+        document.getElementById("law-sections-section").classList.add("hidden");
+      } else {
+        document.getElementById("law-sections-section").classList.remove("hidden");
+        sections.forEach(s => {
+          const pct = Math.round((s.score || 0) * 100);
+          lawContainer.innerHTML += `
+            <div class="border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+              <div class="flex items-start justify-between">
+                <div>
+                  <p class="font-medium text-sm text-gray-800">${s.act || ""} — Section ${s.section_number || s.section || ""}</p>
+                  <p class="text-sm text-gray-600 mt-0.5">${s.section_title || s.title || ""}</p>
+                </div>
+                <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">${pct}% match</span>
+              </div>
+              ${s.excerpt ? `<p class="text-xs text-gray-400 mt-2 line-clamp-2">${s.excerpt.substring(0, 200)}</p>` : ""}
+            </div>
+          `;
+        });
+      }
+
+      // Readiness score
+      const score = data.case_readiness_score || 0;
+      const circle = document.getElementById("readiness-circle");
+      const scoreColor = score >= 70 ? "border-green-500 text-green-600" : score >= 40 ? "border-yellow-500 text-yellow-600" : "border-red-500 text-red-600";
+      circle.className = "w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-bold " + scoreColor;
+      circle.textContent = score;
+
+      // Risk badge
+      const risk = data.risk_level || "medium";
+      const riskBadge = document.getElementById("risk-badge");
+      const riskColors = { low: "bg-green-100 text-green-700", medium: "bg-yellow-100 text-yellow-700", high: "bg-red-100 text-red-700" };
+      riskBadge.className = "inline-block px-3 py-1 rounded-full text-sm font-medium " + (riskColors[risk] || "bg-gray-100 text-gray-700");
+      riskBadge.textContent = "Risk: " + risk.charAt(0).toUpperCase() + risk.slice(1);
+
+      // Evidence
+      const evAvail = document.getElementById("evidence-available-list");
+      evAvail.innerHTML = "";
+      (data.evidence_available || []).forEach(e => {
+        evAvail.innerHTML += `<li class="flex items-start gap-2 text-sm text-gray-700"><svg class="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>${e}</li>`;
+      });
+
+      const evMiss = document.getElementById("evidence-missing-list");
+      evMiss.innerHTML = "";
+      (data.evidence_missing || []).forEach(e => {
+        evMiss.innerHTML += `<li class="flex items-start gap-2 text-sm text-gray-700"><svg class="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>${e}</li>`;
+      });
+
+      // Action plan
+      const planList = document.getElementById("action-plan-list");
+      planList.innerHTML = "";
+      const actions = data.recommended_actions || (data.next_steps || []).map(s => s.text);
+      actions.forEach((a, i) => {
+        planList.innerHTML += `<li class="flex items-start gap-3 text-sm text-gray-700"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium">${i + 1}</span>${typeof a === "string" ? a : a.text || ""}</li>`;
+      });
+
+      // Legal notice draft
+      const noticeField = document.getElementById("notice-draft");
+      noticeField.value = data.legal_notice_draft || "No draft generated.";
+    }
+
+    async function downloadPdf() {
+      const notice = document.getElementById("notice-draft").value;
+      if (!notice || notice === "No draft generated.") { alert("No legal notice to download."); return; }
+
+      try {
+        const res = await fetch(API + "/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ legal_notice_draft: notice, case_type: "", relevant_sections: [] }),
+        });
+        if (!res.ok) throw new Error("PDF generation failed");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "legal_notice.pdf";
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Failed to generate PDF: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

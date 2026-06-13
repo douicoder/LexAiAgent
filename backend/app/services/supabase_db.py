@@ -1,6 +1,5 @@
 import uuid
 
-from fastapi import HTTPException, status
 from supabase import create_client
 
 from app.config import settings
@@ -9,10 +8,7 @@ from app.config import settings
 class SupabaseService:
     def __init__(self):
         if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Supabase not configured",
-            )
+            raise ValueError("Supabase not configured")
         self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
 
     # ── Users ────────────────────────────────────────────────
@@ -138,8 +134,8 @@ class SupabaseService:
         return result.data[0] if result.data else None
 
     def update_document(self, doc_id: str, data: dict) -> dict:
-        import datetime
-        data["updated_at"] = datetime.datetime.utcnow().isoformat()
+        from datetime import datetime, timezone
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = self.client.table("case_documents").update(data).eq("id", doc_id).execute()
         return result.data[0]
 

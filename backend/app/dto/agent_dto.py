@@ -46,6 +46,7 @@ class AnalyzeRequestDTO(BaseModel):
 class AnalyzeResponseDTO(BaseModel):
     case_type: str
     severity: str
+    legal_domain: str = ""
     relevant_sections: list
     legal_notice_draft: str = ""
     summary: str
@@ -54,6 +55,11 @@ class AnalyzeResponseDTO(BaseModel):
     clarifying_questions: list[ClarifyingQuestion] = []
     action_buttons: list[ActionButton] = []
     ai_message: str = ""
+    case_readiness_score: int = 0
+    evidence_available: list[str] = []
+    evidence_missing: list[str] = []
+    risk_level: str = "medium"
+    recommended_actions: list[str] = []
 
 
 class ChatMessageDTO(BaseModel):
