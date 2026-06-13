@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from app.api import agent, auth, cases, demo, documents, voice
 from app.config import settings
@@ -31,6 +34,11 @@ app.include_router(voice.router, prefix="/api/v1")
 async def startup() -> None:
     await create_tables()
 
+
+@app.get("/")
+async def index() -> HTMLResponse:
+    html = Path(__file__).parent / "static" / "demo.html"
+    return HTMLResponse(html.read_text(encoding="utf-8"))
 
 @app.get("/health")
 async def health() -> dict[str, str]:
