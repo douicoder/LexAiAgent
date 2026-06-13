@@ -51,6 +51,9 @@ backend/debug_*
 backend/token.txt
 *.tmp
 nul
+*.pdf
+token.tmp
+backend/lexagent.db
 
 # Law document inputs
 backend/law_docs/*
