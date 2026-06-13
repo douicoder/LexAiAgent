@@ -591,6 +591,57 @@
       riskBadge.className = "inline-block px-3 py-1 rounded-full text-sm font-medium " + (riskColors[risk] || "bg-gray-100 text-gray-700");
       riskBadge.textContent = "Risk: " + risk.charAt(0).toUpperCase() + risk.slice(1);
 
+      // Re-render evidence checklist (fresh analysis may have different items)
+      const checklist = document.getElementById("evidence-checklist");
+      const evItems = data.evidence_missing || [];
+      document.getElementById("total-evidence-count").textContent = evItems.length;
+      evidenceChecked = {};
+      checklist.innerHTML = "";
+      if (evItems.length > 0) {
+        evItems.forEach((item, idx) => {
+          const key = "ev_" + idx;
+          evidenceChecked[key] = false;
+          const div = document.createElement("div");
+          div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-gray-50 transition-colors";
+          div.innerHTML = `
+            <input type="checkbox" id="${key}" class="evidence-checkbox mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0"
+              onchange="onEvidenceChange()">
+            <label for="${key}" class="evidence-label text-sm text-gray-700 cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
+          `;
+          checklist.appendChild(div);
+        });
+      } else {
+        checklist.innerHTML = '<p class="text-sm text-gray-400 italic">No evidence items required.</p>';
+      }
+
+      // Re-render suggestions (fresh analysis may have different items)
+      const suggestions = data.evidence_suggestions || [];
+      const sugSection = document.getElementById("suggestions-section");
+      const sugList = document.getElementById("suggestions-checklist");
+      document.getElementById("total-suggestion-count").textContent = suggestions.length;
+      suggestionChecked = {};
+      sugList.innerHTML = "";
+      if (suggestions.length > 0) {
+        sugSection.classList.remove("hidden");
+        suggestions.forEach((item, idx) => {
+          const key = "sug_" + idx;
+          suggestionChecked[key] = false;
+          const div = document.createElement("div");
+          div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-indigo-50 transition-colors";
+          div.innerHTML = `
+            <input type="checkbox" id="${key}" class="suggestion-checkbox mt-0.5 w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer flex-shrink-0"
+              onchange="onEvidenceChange()">
+            <label for="${key}" class="suggestion-label text-sm text-gray-600 cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
+          `;
+          sugList.appendChild(div);
+        });
+      } else {
+        sugSection.classList.add("hidden");
+      }
+
+      document.getElementById("checked-count").textContent = "0";
+      document.getElementById("suggestion-checked-count").textContent = "0";
+
       // Update documents (regenerated with evidence context)
       renderDocuments(data);
 
@@ -606,8 +657,29 @@
           li.innerHTML = '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium">' + (i + 1) + '</span><span class="leading-relaxed">' + text + '</span>';
           planList.appendChild(li);
         });
+      } else {
+        const recActions = data.recommended_actions || [];
+        if (recActions.length > 0) {
+          recActions.forEach((a, i) => {
+            const li = document.createElement("li");
+            li.className = "flex items-start gap-3 text-sm text-gray-700";
+            li.innerHTML = '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium">' + (i + 1) + '</span><span class="leading-relaxed">' + a + '</span>';
+            planList.appendChild(li);
+          });
+        } else {
+          planList.innerHTML = '<p class="text-sm text-gray-400 italic">No action steps generated.</p>';
+        }
       }
     }
+
+    const DRAFT_HEADER =
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+      "⚠ THIS IS A COMPUTER-GENERATED DRAFT — FOR REFERENCE ONLY ⚠\n" +
+      "This document is an AI-generated draft based on your case description.\n" +
+      "It does NOT constitute legal advice. Please review with a qualified\n" +
+      "legal professional before use. Facts, legal citations, and amounts\n" +
+      "must be verified and customized to your specific situation.\n" +
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
 
     function renderDocuments(data) {
       const tabsContainer = document.getElementById("doc-tabs");
@@ -616,11 +688,11 @@
 
       const docs = [];
       if (data.legal_notice_draft) {
-        docs.push({ id: "legal-notice", title: "Legal Notice", content: data.legal_notice_draft });
+        docs.push({ id: "legal-notice", title: "Legal Notice", content: DRAFT_HEADER + data.legal_notice_draft });
       }
       if (data.other_documents && data.other_documents.length > 0) {
         data.other_documents.forEach((d, i) => {
-          docs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: d.content || "" });
+          docs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: DRAFT_HEADER + (d.content || "") });
         });
       }
 

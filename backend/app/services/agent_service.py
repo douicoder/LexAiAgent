@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -26,15 +27,7 @@ from app.interfaces.i_rag_service import IRagService
 LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = "gpt-4o"
 
-DRAFT_DISCLAIMER = (
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "⚠ THIS IS A COMPUTER-GENERATED DRAFT — FOR REFERENCE ONLY ⚠\n"
-    "This document is an AI-generated draft based on your case description.\n"
-    "It does NOT constitute legal advice. Please review with a qualified\n"
-    "legal professional before use. Facts, legal citations, and amounts\n"
-    "must be verified and customized to your specific situation.\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-)
+
 
 AVAILABLE_LAW_DOCS = [
     "Model Tenancy Act, 2021",
@@ -181,20 +174,81 @@ class AgentService:
                 lines.append(f"   - Relevant excerpt: \"{excerpt[:150]}...\"")
         return "\n".join(lines)
 
-    def _build_evidence_section(self, ev_available: list[str], ev_missing: list[str]) -> str:
-        lines = ["━━━ EVIDENCE STATUS ━━━"]
-        if ev_available:
-            lines.append("You confirmed having the following evidence, which has been incorporated into this document:")
-            for e in ev_available:
-                lines.append(f"  ✓ {e}")
+    DOC_PLACEHOLDERS = {
+        "[Landlord's Name]": "the Landlord",
+        "[Landlord's Address]": "at their registered address",
+        "[Your Name]": "[Your Name]",
+        "[Your Address]": "[Your Address]",
+        "[Amount]": "the relevant amount",
+        "[Property Address]": "the subject property",
+        "[City Name]": "[City Name]",
+        "[Address]": "the relevant address",
+        "[Start Date]": "[Start Date]",
+        "[End Date]": "[End Date]",
+        "[Date]": "[Date]",
+        "[Phone Number]": "[Phone Number]",
+        "[Email Address]": "[Email Address]",
+        "[Company Name]": "the Employer",
+        "[Company Address]": "at their registered address",
+        "[Designation]": "[Designation]",
+        "[Product/Service]": "the Product/Service",
+        "[Recipient Name]": "the Recipient",
+        "[Unpaid Period]": "the relevant period",
+        "[Describe the issue briefly]": "[Describe the issue briefly]",
+        "[Describe defect/deficiency in detail]": "[Describe the defect in detail]",
+    }
+
+    def _extract_case_info(self, description: str) -> dict:
+        info = {}
+        desc_lower = description.lower()
+
+        # Try to extract monetary amount
+        m = re.search(r'(?:rs\.?\s*|₹\s*|rupees?\s+)?(\d[\d,]+)\s*(?:rupees?|rs\.?|₹)?', description, re.IGNORECASE)
+        if m:
+            raw = m.group(1).replace(",", "")
+            if raw.isdigit():
+                info["amount"] = raw
+
+        # Try to extract landlord name (word after "landlord" or "my landlord")
+        m = re.search(r'(?:my\s+)?landlord\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', description)
+        if m:
+            info["landlord_name"] = m.group(1)
         else:
-            lines.append("No evidence has been confirmed yet.")
-        if ev_missing:
-            lines.append("\nStill required for a stronger case:")
-            for e in ev_missing:
-                lines.append(f"  ✗ {e}")
-        lines.append("━━━━━━━━━━━━━━━━━━━━━━")
-        return "\n".join(lines)
+            m = re.search(r'(?:my\s+)?landlord[,\s]+([A-Z][a-z]+)', description)
+            if m:
+                info["landlord_name"] = m.group(1)
+
+        # Try to extract company/employer name
+        m = re.search(r'(?:my\s+)?(?:employer|company)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', description)
+        if m:
+            info["company_name"] = m.group(1)
+            info["employer_name"] = m.group(1)
+
+        # Try to extract tenant name
+        m = re.search(r'(?:my\s+name\s+is\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', description)
+        if m:
+            info["your_name"] = m.group(1)
+
+        return info
+
+    def _render_doc_template(self, content: str, info: dict) -> str:
+        result = content
+        for placeholder, default in self.DOC_PLACEHOLDERS.items():
+            key = placeholder.strip("[]").lower().replace("'", "").replace(" ", "_").replace("/", "_or_")
+            if key == "your_name":
+                value = info.get("your_name", info.get("tenant_name", default))
+            elif key == "landlords_name":
+                value = info.get("landlord_name", default)
+            elif key == "amount":
+                value = info.get("amount", default)
+            elif key == "company_name":
+                value = info.get("company_name", default)
+            elif key == "product_or_service":
+                value = info.get("product", default)
+            else:
+                value = info.get(key, default)
+            result = result.replace(placeholder, value)
+        return result
 
     def _mock_analysis(self, description: str, evidence_available_override: list[str] | None = None, evidence_missing_override: list[str] | None = None) -> AnalyzeResponseDTO:
         desc_lower = description.lower().strip()
@@ -270,7 +324,7 @@ class AgentService:
 
             other_docs = [
                 DocumentDTO(id="", case_id="", doc_type="demand_letter", title="Demand Letter for Deposit Refund", content=(
-                    DRAFT_DISCLAIMER +
+
                     f"FORMAL DEMAND LETTER\n"
                     f"==============================\n\n"
                     f"TO:\n[Landlord's Name]\n[Landlord's Address]\n\n"
@@ -296,7 +350,7 @@ class AgentService:
                     f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
                 )),
                 DocumentDTO(id="", case_id="", doc_type="complaint", title="Complaint to Rent Controller", content=(
-                    DRAFT_DISCLAIMER +
+
                     f"COMPLAINT BEFORE THE RENT CONTROLLER\n"
                     f"==============================\n\n"
                     f"BEFORE THE OFFICE OF THE RENT CONTROLLER\n[City Name]\n\n"
@@ -375,7 +429,7 @@ class AgentService:
 
             other_docs = [
                 DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Consumer Complaint Letter", content=(
-                    DRAFT_DISCLAIMER +
+
                     f"COMPLAINT LETTER FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
                     f"TO:\n[Seller/Service Provider Name]\n[Address]\n\n"
                     f"FROM:\n[Your Name]\n[Your Address]\n\n"
@@ -445,7 +499,7 @@ class AgentService:
 
             other_docs = [
                 DocumentDTO(id="", case_id="", doc_type="legal_notice", title="Notice for Recovery of Salary Dues", content=(
-                    DRAFT_DISCLAIMER +
+
                     f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
                     f"TO:\n[Employer/Company Name]\n[Company Address]\n\n"
                     f"FROM:\n[Your Name]\n[Your Address]\n\n"
@@ -511,7 +565,7 @@ class AgentService:
 
             other_docs = [
                 DocumentDTO(id="", case_id="", doc_type="legal_notice", title="General Legal Notice", content=(
-                    DRAFT_DISCLAIMER +
+
                     f"LEGAL NOTICE\n\n"
                     f"TO:\n[Recipient Name]\n[Address]\n\n"
                     f"FROM:\n[Your Name]\n[Your Address]\n\n"
@@ -544,14 +598,16 @@ class AgentService:
                 "Do not destroy any evidence — preserve messages, emails, documents, and photographs",
             ]
 
-        # ── Adjust readiness based on description detail ──────────────────
-        detail_boost = min(25, word_count * 3)
+        # ── Extract case info from description for document filling ────
+        info = self._extract_case_info(description)
+
+        # ── Calculate readiness score ──────────────────────────────────
+        detail_score = min(30, word_count * 3)
         for keyword in ["receipt", "agreement", "contract", "invoice", "bank", "payment", "photos", "email", "letter", "document", "proof", "evidence", "record", "statement", "witness"]:
             if keyword in desc_lower:
-                detail_boost += 3
-        base_readiness = max(base_readiness, 10)
+                detail_score += 3
+        detail_score = min(40, detail_score)
 
-        # ── Apply evidence override if provided ───────────────────────────
         if evidence_available_override is not None:
             ev_available = evidence_available_override
             if evidence_missing_override is not None:
@@ -560,18 +616,15 @@ class AgentService:
                 ev_missing = [e for e in evidence_missing_items if e not in ev_available]
             total_ev = len(ev_available) + len(ev_missing)
             ev_confirmed_pct = len(ev_available) / max(total_ev, 1)
-            ev_boost = int(ev_confirmed_pct * 40)
-            readiness = min(85, base_readiness + detail_boost + ev_boost)
+            evidence_score = int(ev_confirmed_pct * 50)
         else:
             ev_available = []
             ev_missing = evidence_missing_items
+            evidence_score = 0
 
-        ev_section = self._build_evidence_section(ev_available,
-            [e for e in evidence_missing_items if e not in ev_available] if evidence_available_override is not None else evidence_missing_items)
+        readiness = min(100, base_readiness + detail_score + evidence_score)
 
-        # ── Generate legal notice draft (with DRAFT disclaimer) ──────────
-        ev_text = f"\nEVIDENCE ON RECORD:\n{ev_section}\n\n"
-
+        # ── Generate legal notice draft (no EVIDENCE STATUS, no DRAFT disclaimer) ──
         if case_type == "tenancy_dispute":
             notice_content = (
                 f"LEGAL NOTICE FOR RETURN OF SECURITY DEPOSIT\n\n"
@@ -580,7 +633,6 @@ class AgentService:
                 f"Date: {now_str}\n\n"
                 f"SUBJECT: Legal notice demanding return of security deposit of Rs. [Amount]\n\n"
                 f"Dear Sir/Madam,\n\n"
-                f"{ev_text}"
                 f"I, [Your Name], was a tenant at your property located at [Property Address] "
                 f"from [Start Date] to [End Date]. I paid a refundable security deposit of Rs. [Amount].\n\n"
                 f"LEGAL GROUNDS (from database search):\n"
@@ -589,17 +641,15 @@ class AgentService:
                 f"within 15 days, failing which legal proceedings will be initiated.\n\n"
                 f"Yours faithfully,\n[Your Name]\n[Phone Number]\n[Email Address]"
             )
-            notice = DRAFT_DISCLAIMER + notice_content
         elif case_type == "consumer_dispute":
             notice_content = (
                 f"LEGAL NOTICE FOR DEFECTIVE GOODS / DEFICIENT SERVICES\n\n"
-                f"TO:\n[Seller/Service Provider Name]\n[Address]\n\n"
+                f"TO:\n[Recipient Name]\n[Address]\n\n"
                 f"FROM:\n[Your Name]\n[Your Address]\n\n"
                 f"Date: {now_str}\n\n"
                 f"SUBJECT: Legal notice for defective goods / deficient services\n\n"
                 f"Dear Sir/Madam,\n\n"
-                f"{ev_text}"
-                f"I purchased [Product/Service] from you on [Purchase Date] for Rs. [Amount]. "
+                f"I purchased [Product/Service] from you for Rs. [Amount]. "
                 f"The product is defective / service is deficient.\n\n"
                 f"LEGAL GROUNDS:\n"
                 f"{section_refs}\n\n"
@@ -608,16 +658,14 @@ class AgentService:
                 f"YOU ARE HEREBY CALLED UPON to replace/refund within 15 days.\n\n"
                 f"Yours faithfully,\n[Your Name]"
             )
-            notice = DRAFT_DISCLAIMER + notice_content
         elif case_type == "employment_dispute":
             notice_content = (
                 f"NOTICE FOR RECOVERY OF UNPAID SALARY\n\n"
-                f"TO:\n[Employer/Company Name]\n[Company Address]\n\n"
+                f"TO:\n[Company Name]\n[Company Address]\n\n"
                 f"FROM:\n[Your Name]\n[Your Address]\n\n"
                 f"Date: {now_str}\n\n"
                 f"SUBJECT: Notice for recovery of unpaid salary of Rs. [Amount]\n\n"
                 f"Dear Sir/Madam,\n\n"
-                f"{ev_text}"
                 f"I was employed as [Designation] at [Company Name] since [Start Date]. "
                 f"My salary of Rs. [Amount] remains unpaid.\n\n"
                 f"LEGAL GROUNDS:\n"
@@ -627,16 +675,14 @@ class AgentService:
                 f"YOU ARE HEREBY CALLED UPON to pay Rs. [Amount] within 7 days.\n\n"
                 f"Yours faithfully,\n[Your Name]"
             )
-            notice = DRAFT_DISCLAIMER + notice_content
         else:
             notice_content = (
                 f"LEGAL NOTICE\n\n"
-                f"TO:\n[Recipient Name]\n[Recipient Address]\n\n"
+                f"TO:\n[Recipient Name]\n[Address]\n\n"
                 f"FROM:\n[Your Name]\n[Your Address]\n\n"
                 f"Date: {now_str}\n\n"
                 f"SUBJECT: Legal notice\n\n"
                 f"Dear Sir/Madam,\n\n"
-                f"{ev_text}"
                 f"I, [Your Name], hereby serve this legal notice upon you.\n\n"
                 f"[Describe the issue briefly]\n\n"
                 f"LAW DOCUMENTS AVAILABLE IN DATABASE:\n"
@@ -646,15 +692,15 @@ class AgentService:
                 f"You are called upon to respond within 15 days.\n\n"
                 f"Yours faithfully,\n[Your Name]"
             )
-            notice = DRAFT_DISCLAIMER + notice_content
 
-        # Inject evidence into all other_docs
+        # Render ready-to-use documents — fill placeholders, strip evidence/draft boilerplate
+        notice = self._render_doc_template(notice_content, info)
         updated_other = []
         for doc in other_docs:
+            rendered = self._render_doc_template(doc.content, info)
             updated_other.append(DocumentDTO(
                 id=doc.id, case_id=doc.case_id, doc_type=doc.doc_type,
-                title=doc.title,
-                content=doc.content + f"\n\n{ev_section}",
+                title=doc.title, content=rendered,
                 status=doc.status, created_at=doc.created_at, updated_at=doc.updated_at,
             ))
 
@@ -688,19 +734,11 @@ class AgentService:
         evidence_available: list[str],
         evidence_missing: list[str],
     ) -> AnalyzeResponseDTO:
-        # Re-run full analysis with evidence override — regenerates documents
-        # with evidence baked in at creation time, not appended after
-        base = self._mock_analysis(
+        return self._mock_analysis(
             description,
             evidence_available_override=evidence_available,
             evidence_missing_override=evidence_missing,
         )
-        if not base.is_sufficient:
-            return base
-        total = len(evidence_available) + len(evidence_missing)
-        base.ai_message += f" Evidence status updated: you have {len(evidence_available)} of {total} required items."
-        base.reasoning_trace += f"\n[update_evidence] confirmed={len(evidence_available)}/{total} score={base.case_readiness_score}"
-        return base
 
     async def analyze_case(self, request: AnalyzeRequestDTO) -> AnalyzeResponseDTO:
         description = request.description
