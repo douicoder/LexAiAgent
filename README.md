@@ -293,33 +293,56 @@ All configuration lives in `backend/.env`. See `backend/.env.example` for the fu
 
 ## Deploy to Vercel
 
-The frontend can be deployed as a static site on Vercel.
+Both frontend and backend can be deployed to Vercel as a single project.
 
-### Prerequisites
-- Backend deployed and running (e.g., on Render, Railway, or a VPS)
-- Vercel account (free tier works)
+### How it works
+- **Frontend:** `public/index.html` served as static files
+- **Backend:** `api/index.py` runs as a Python serverless function
+- All routes go through the same Vercel domain
 
 ### Steps
 
-1. **Update the API URL** in `public/index.html`:
-   ```html
-   <meta name="api-url" content="https://your-backend-url.onrender.com/api/v1/demo">
-   ```
+1. **Add environment variables on Vercel:**
+   - Go to your project Settings → Environment Variables
+   - Add all keys from `backend/.env`:
+     ```
+     LLM_API_KEY=sk-or-...
+     LLM_BASE_URL=https://openrouter.ai/api/v1
+     LLM_MODEL=google/gemini-2.0-flash-001
+     FAST_MODEL=openai/gpt-oss-20b:free
+     EMBEDDING_API_KEY=ghp_...
+     EMBEDDING_BASE_URL=https://models.github.ai/inference
+     EMBEDDING_MODEL=openai/text-embedding-3-small
+     SUPABASE_URL=https://xxx.supabase.co
+     SUPABASE_KEY=eyJ...
+     SUPABASE_SERVICE_KEY=eyJ...
+     GITHUB_TOKEN=ghp_...
+     GITHUB_TOKEN_2=ghp_...
+     ```
 
 2. **Push to GitHub:**
    ```bash
-   git add public/ vercel.json
-   git commit -m "Add Vercel deployment config"
+   git add api/ public/ vercel.json requirements.txt
+   git commit -m "Add full Vercel deployment"
    git push
    ```
 
 3. **Deploy on Vercel:**
    - Go to [vercel.com/new](https://vercel.com/new)
    - Import your GitHub repository
-   - Vercel will auto-detect the `vercel.json` config
+   - Vercel auto-detects the config
    - Click **Deploy**
 
-4. **Done!** Your frontend is live at `https://your-project.vercel.app`
+4. **Done!**
+   - Frontend: `https://your-project.vercel.app`
+   - Backend API: `https://your-project.vercel.app/api/v1/demo/analyze`
+   - Health check: `https://your-project.vercel.app/health`
+
+### Important notes
+- Vercel serverless functions have a **10 second** timeout on free tier
+- The analysis pipeline takes ~15-25 seconds — this may timeout on free tier
+- Consider upgrading to Pro ($20/month) for 60 second timeout
+- Or deploy backend separately on Render/Railway (free, no timeout)
 
 ### How it works
 - `public/index.html` is the main SPA
