@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
 
+
+@router.get("/health")
+async def demo_health() -> dict[str, str]:
+    return {"status": "ok", "service": "LexAgent Demo"}
+
 rag = RagService()
 agent = AgentService(rag)
 
