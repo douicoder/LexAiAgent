@@ -173,12 +173,9 @@ class AgentService:
         evidence_missing: list[str],
         document_modifications: dict[str, str] | None = None,
     ) -> AnalyzeResponseDTO:
-        evidence_context = (
-            f"The user has confirmed they have the following evidence:\n"
-            + "\n".join(f"- {e}" for e in evidence_available)
-            + "\n\nThe following evidence is still missing:\n"
-            + "\n".join(f"- {e}" for e in evidence_missing)
-        )
+        confirmed_list = "\n".join(f"- {e}" for e in evidence_available) if evidence_available else "None"
+        missing_list = "\n".join(f"- {e}" for e in evidence_missing) if evidence_missing else "None"
+
         mod_context = ""
         if document_modifications:
             mod_parts = []
@@ -190,12 +187,20 @@ class AgentService:
 
         full_prompt = (
             f"Original case description:\n{description}\n\n"
-            f"Updated evidence status:\n{evidence_context}\n"
+            f"=== EVIDENCE STATUS (USE THIS EXACTLY) ===\n"
+            f"CONFIRMED evidence (user HAS these — treat as FACTS, reference in documents):\n{confirmed_list}\n\n"
+            f"MISSING evidence (user does NOT have these — do NOT reference as available):\n{missing_list}\n"
+            f"=== END EVIDENCE STATUS ===\n"
             f"{mod_context}\n\n"
-            f"Regenerate the full legal analysis with updated documents reflecting the confirmed evidence. "
-            f"Preserve any user modifications to documents. "
-            f"Strengthen the legal documents by referencing the confirmed evidence. "
-            f"Recalculate the case_readiness_score based on the evidence now available."
+            f"INSTRUCTIONS:\n"
+            f"1. Treat CONFIRMED evidence as factual. Reference them in legal documents.\n"
+            f"2. Do NOT generate new evidence items. Use ONLY the lists above.\n"
+            f"3. evidence_missing in your response should ONLY contain items from the MISSING list above.\n"
+            f"4. evidence_available in your response should ONLY contain items from the CONFIRMED list above.\n"
+            f"5. Strengthen legal documents by referencing confirmed evidence specifically.\n"
+            f"6. Recalculate case_readiness_score: more confirmed evidence = higher score.\n"
+            f"7. Preserve any user modifications to documents.\n"
+            f"8. Use simple, clear language."
         )
         return await self._run_llm_analysis(full_prompt, use_client=self.client2)
 
