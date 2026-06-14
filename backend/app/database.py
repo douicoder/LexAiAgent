@@ -32,11 +32,5 @@ async def create_tables() -> None:
     from app import models  # noqa: F401
 
     async with engine.begin() as conn:
-        from app.models.case import Case
-        from app.models.case_document import CaseDocument
-        from app.models.case_message import CaseMessage
-        from app.models.user import User
-        await conn.run_sync(User.__table__.create, checkfirst=True)
-        await conn.run_sync(Case.__table__.create, checkfirst=True)
-        await conn.run_sync(CaseDocument.__table__.create, checkfirst=True)
-        await conn.run_sync(CaseMessage.__table__.create, checkfirst=True)
+        from app.models.document import LawChunk
+        await conn.run_sync(LawChunk.__table__.create, checkfirst=True)

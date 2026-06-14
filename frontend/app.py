@@ -7,7 +7,6 @@ from flask import Flask, redirect, url_for
 
 from config import Config
 from routes import register_blueprints
-from utils.auth import is_authenticated
 
 
 def create_app() -> Flask:
@@ -17,18 +16,7 @@ def create_app() -> Flask:
 
     @app.route("/")
     def root():
-        if is_authenticated():
-            return redirect(url_for("dashboard.index"))
         return redirect(url_for("demo.demo"))
-
-    @app.context_processor
-    def inject_globals():
-        from flask import session
-
-        return {
-            "current_user_name": session.get("full_name", ""),
-            "current_user_email": session.get("email", ""),
-        }
 
     return app
 
