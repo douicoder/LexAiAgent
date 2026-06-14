@@ -121,7 +121,9 @@ Frontend is running at http://localhost:5000/demo/
 cd backend
 
 # Place your law PDFs in the law_docs/ folder
-# Then run:
+# Only law documents go here — nothing else
+
+# Run ingestion:
 python scripts/ingest_laws.py
 ```
 
@@ -216,9 +218,9 @@ LexAiAgent/
 │   │       ├── legal_helper.py  # Prompts & templates
 │   │       └── text_helper.py   # Language detection
 │   ├── scripts/
-│   │   ├── ingest_laws.py       # Law PDF ingestion
+│   │   ├── ingest_laws.py       # Law PDF ingestion (run this)
 │   │   └── apply_schema.py      # Supabase RPC setup
-│   ├── law_docs/                # Source law PDFs (not in git)
+│   ├── law_docs/                # Law PDFs only (not in git)
 │   ├── .env                     # Secrets (not in git)
 │   └── requirements.txt
 │
