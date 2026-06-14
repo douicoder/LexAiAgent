@@ -24,9 +24,115 @@ LexAiAgent is a web-based legal aid system that helps ordinary people understand
 
 ---
 
-## Demo
+## Quick Start
 
-**Try it:** http://localhost:5000/demo/
+### Prerequisites
+
+| Requirement | Why | Get it |
+|-------------|-----|--------|
+| Python 3.11+ | Runtime | [python.org](https://python.org) |
+| OpenRouter API key | Powers the LLM (Gemini Flash) | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| GitHub Personal Access Token | Powers embeddings | [github.com/settings/tokens](https://github.com/settings/tokens) |
+| Supabase account | Database + law storage | [supabase.com](https://supabase.com) (free tier works) |
+
+### Step 1 — Clone the repo
+
+```bash
+git clone https://github.com/douicoder/LexAiAgent.git
+cd LexAiAgent
+```
+
+### Step 2 — Backend setup
+
+```bash
+cd backend
+
+# Create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Mac/Linux
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy the example env file and fill in your keys
+copy .env.example .env         # Windows
+# cp .env.example .env         # Mac/Linux
+```
+
+Now edit `.env` and fill in your actual API keys:
+
+```env
+# LLM — paste your OpenRouter API key
+LLM_API_KEY=sk-or-xxxxxxxxxxxx
+
+# Embeddings — paste your GitHub PAT
+EMBEDDING_API_KEY=ghp_xxxxxxxxxxxx
+GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+GITHUB_TOKEN_2=ghp_xxxxxxxxxxxx
+
+# Supabase — paste your project credentials
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+```
+
+Start the backend:
+
+```bash
+uvicorn app.main:app --reload --port 8002
+```
+
+Backend is running at http://localhost:8002
+
+### Step 3 — Frontend setup
+
+Open a **new terminal**:
+
+```bash
+cd frontend
+
+# Create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Mac/Linux
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the frontend
+python app.py
+```
+
+Frontend is running at http://localhost:5000/demo/
+
+### Step 4 — Supabase database setup
+
+1. Go to your [Supabase dashboard](https://supabase.com/dashboard)
+2. Open the SQL Editor
+3. Paste and run the contents of `backend/supabase_script.txt`
+4. This creates the `law_chunks` table and the `match_law_chunks` RPC function
+
+### Step 5 — Ingest law documents (one-time)
+
+```bash
+cd backend
+
+# Place your law PDFs in the law_docs/ folder
+# Then run:
+python scripts/ingest_laws.py
+```
+
+This reads the PDFs, extracts text, generates embeddings, and stores them in Supabase. Takes ~2-5 minutes depending on PDF size.
+
+### Step 6 — Open and use
+
+- **Frontend:** http://localhost:5000/demo/
+- **Backend API docs (Swagger):** http://localhost:8002/docs
+
+---
+
+## How to Use
 
 1. Type a legal problem or pick a preset scenario
 2. Click **Improve Query** to enhance your description
@@ -47,12 +153,12 @@ Your Description
        ▼
 ┌─────────────────────┐
 │  Phase 1: Classify   │  What type of case? Is the input clear enough?
-│  (2 parallel LLMs)  │  If vague → clarifying questions
+│  (2 parallel LLMs)  │  If vague → returns "Insufficient data to proceed"
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Phase 2: RAG        │  Search 3 Indian law acts for relevant sections
+│  Phase 2: RAG        │  Search law acts for relevant sections
 │  Vector + BM25       │  using semantic search + keyword matching
 └─────────┬───────────┘
           │
@@ -108,8 +214,9 @@ LexAiAgent/
 │   │       ├── legal_helper.py  # Prompts & templates
 │   │       └── text_helper.py   # Language detection
 │   ├── scripts/
-│   │   └── ingest_laws.py       # Law PDF ingestion
-│   ├── law_docs/                # Source law PDFs
+│   │   ├── ingest_laws.py       # Law PDF ingestion
+│   │   └── apply_schema.py      # Supabase RPC setup
+│   ├── law_docs/                # Source law PDFs (not in git)
 │   ├── .env                     # Secrets (not in git)
 │   └── requirements.txt
 │
@@ -127,97 +234,21 @@ LexAiAgent/
 
 ---
 
-## Getting Started
+## Configuration Reference
 
-### Prerequisites
+All configuration lives in `backend/.env`. See `backend/.env.example` for the full template.
 
-- Python 3.11+
-- Supabase account (free tier works)
-- OpenRouter API key (for LLM)
-- GitHub PAT (for embeddings)
-
-### 1. Backend Setup
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate      # Windows
-# source venv/bin/activate  # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-copy .env.example .env
-# Edit .env with your API keys (see Configuration below)
-
-# Run the server
-uvicorn app.main:app --reload --port 8002
-```
-
-### 2. Frontend Setup
-
-```bash
-cd frontend
-
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate      # Windows
-# source venv/bin/activate  # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the server
-python app.py
-```
-
-### 3. Law Ingestion (One-time)
-
-```bash
-cd backend
-
-# Place your law PDFs in law_docs/
-python scripts/ingest_laws.py
-```
-
-### 4. Open
-
-- **Frontend:** http://localhost:5000/demo/
-- **Backend API docs:** http://localhost:8002/docs
-
----
-
-## Configuration
-
-### Backend `.env`
-
-```env
-# LLM (OpenRouter)
-LLM_MODEL=google/gemini-2.0-flash-001
-FAST_MODEL=openai/gpt-oss-20b:free
-LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_API_KEY=your-openrouter-api-key
-
-# Embeddings (GitHub Models)
-EMBEDDING_MODEL=openai/text-embedding-3-small
-EMBEDDING_BASE_URL=https://models.github.ai/inference
-EMBEDDING_API_KEY=your-github-pat
-
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-role-key
-```
-
-### Supabase Setup
-
-1. Create a new Supabase project
-2. Run the SQL in `backend/supabase_script.txt` to create tables
-3. Enable the `vector` extension for pgvector
-4. Run `python scripts/apply_schema.py` to create the RPC function
+| Key | Description | Where to get |
+|-----|-------------|--------------|
+| `LLM_API_KEY` | OpenRouter API key | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `LLM_BASE_URL` | OpenRouter endpoint | `https://openrouter.ai/api/v1` |
+| `LLM_MODEL` | Main LLM model | `google/gemini-2.0-flash-001` |
+| `FAST_MODEL` | Fast LLM model | `openai/gpt-oss-20b:free` |
+| `EMBEDDING_API_KEY` | GitHub PAT for embeddings | [github.com/settings/tokens](https://github.com/settings/tokens) |
+| `EMBEDDING_BASE_URL` | GitHub Models endpoint | `https://models.github.ai/inference` |
+| `SUPABASE_URL` | Supabase project URL | Supabase dashboard → Settings → API |
+| `SUPABASE_KEY` | Supabase anon key | Supabase dashboard → Settings → API |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key | Supabase dashboard → Settings → API |
 
 ---
 
@@ -240,6 +271,19 @@ SUPABASE_SERVICE_KEY=your-service-role-key
 - **Parallel LLM calls** — 6 LLM calls completed in ~15-25 seconds
 - **RAG-powered law search** — semantic vector search + BM25 keyword matching
 - **Multilingual** — supports Hindi input (auto-translated)
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `ModuleNotFoundError: No module named 'fitz'` | Run `pip install PyMuPDF` (the package name is PyMuPDF, not fitz) |
+| Backend crashes on startup | Check `.env` — all keys must be filled in |
+| `429 Too Many Requests` | OpenRouter free tier rate limit. Wait 30s and retry |
+| No law sections found | Run `python scripts/ingest_laws.py` to ingest law PDFs |
+| PDF download fails | Ensure `legal-notices` bucket exists in Supabase |
+| Frontend can't connect | Ensure backend is running on port 8002 |
 
 ---
 
