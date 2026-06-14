@@ -20,6 +20,7 @@ agent = AgentService(rag)
 @router.post("/analyze")
 async def demo_analyze(body: dict):
     description = body.get("description", "")
+    logger.info(f"Analyze request: {len(description)} chars")
     if not description.strip():
         return AnalyzeResponseDTO(
             case_type="other",
@@ -43,7 +44,9 @@ async def demo_analyze(body: dict):
             opponent_name="",
             opponent_address="",
         )
-        return await agent.analyze_case(request)
+        result = await agent.analyze_case(request)
+        logger.info(f"Analyze complete: score={result.case_readiness_score}, type={result.case_type}")
+        return result
     except Exception as e:
         logger.exception("Analysis failed")
         docs_list = ", ".join(AVAILABLE_LAW_DOCS) if AVAILABLE_LAW_DOCS else "none available"

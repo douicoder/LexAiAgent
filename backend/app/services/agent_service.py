@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ from app.dto.agent_dto import (
 from app.helpers.legal_helper import LegalHelper
 from app.helpers.text_helper import TextHelper
 from app.interfaces.i_rag_service import IRagService
+
+logger = logging.getLogger(__name__)
 
 LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = settings.FAST_MODEL
@@ -94,6 +97,7 @@ class AgentService:
     ) -> str:
         timeout = httpx.Timeout(120.0, connect=15.0)
         use_client = client or self.client
+        logger.debug(f"LLM call: model={model}, max_tokens={max_tokens}")
         for attempt in range(max_retries):
             try:
                 response = await use_client.chat.completions.create(
@@ -103,8 +107,11 @@ class AgentService:
                     extra_body={"reasoning": {"enabled": True}},
                     timeout=timeout,
                 )
-                return response.choices[0].message.content.strip() or ""
-            except (RateLimitError, APITimeoutError, APIConnectionError):
+                content = response.choices[0].message.content.strip() or ""
+                logger.debug(f"LLM response: {len(content)} chars")
+                return content
+            except (RateLimitError, APITimeoutError, APIConnectionError) as e:
+                logger.warning(f"LLM call failed (attempt {attempt + 1}): {e}")
                 if attempt == max_retries - 1:
                     raise
                 wait = 2 ** attempt
@@ -165,6 +172,7 @@ class AgentService:
         reasoning_trace = []
         today = datetime.now(timezone.utc).strftime("%d %B %Y")
         client = use_client or self.client
+        logger.info(f"Starting analysis: {len(description)} chars, model={FAST_MODEL}")
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 1: Classify + Vagueness check (parallel, fast model)
@@ -209,6 +217,7 @@ class AgentService:
 
         is_vague = vague_result.get("is_vague", False)
         vague_questions = vague_result.get("clarifying_questions", [])
+        logger.info(f"Classification: type={classification.get('case_type')}, role={classification.get('user_role')}, vague={is_vague}")
         reasoning_trace.append(f"[classify] {classification.get('case_type')} / {classification.get('user_role')}")
 
         if is_vague and vague_questions:
@@ -238,9 +247,11 @@ class AgentService:
         try:
             law_sections = await self.rag.search(query=query, top_k=5)
         except Exception as e:
+            logger.warning(f"RAG search failed: {e}")
             reasoning_trace.append(f"[rag] error: {e}")
             law_sections = []
 
+        logger.info(f"RAG search: query='{query[:50]}...' -> {len(law_sections)} results")
         reasoning_trace.append(f"[rag] query='{query}' -> {len(law_sections)} results")
 
         # ═══════════════════════════════════════════════════════════════════
