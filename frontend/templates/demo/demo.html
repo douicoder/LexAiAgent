@@ -740,6 +740,20 @@
     }
 
     function renderUpdatedResults(data) {
+      // Update summary
+      document.getElementById("result-summary").textContent = data.summary || "No summary available.";
+
+      // Update case type
+      document.getElementById("result-case-type").textContent = (data.case_type || "other").replace(/_/g, " ");
+      document.getElementById("result-legal-domain").textContent = data.legal_domain || "Civil";
+
+      // Update severity
+      const sev = document.getElementById("result-severity");
+      const sv = data.severity || "medium";
+      const sevColors = { low: "bg-[#5C8A6A]/10 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-orange-100 text-orange-700", urgent: "bg-[var(--seal)]/10 text-[var(--seal)]" };
+      sev.className = "mt-1 inline-block px-3 py-1 rounded-full text-sm font-medium " + (sevColors[sv] || "bg-gray-100 text-gray-700");
+      sev.textContent = sv.charAt(0).toUpperCase() + sv.slice(1);
+
       // Update readiness display
       const score = data.case_readiness_score || 0;
       updateReadiness(score);
@@ -747,6 +761,30 @@
 
       // Update AI message
       document.getElementById("result-ai-message").textContent = data.ai_message || "";
+
+      // Update law sections
+      const lawContainer = document.getElementById("law-sections-list");
+      lawContainer.innerHTML = "";
+      const sections = data.relevant_sections || [];
+      const noLawMsg = document.getElementById("no-law-sections-msg");
+      if (sections.length === 0) {
+        document.getElementById("law-sections-section").classList.remove("hidden");
+        noLawMsg.classList.remove("hidden");
+      } else {
+        noLawMsg.classList.add("hidden");
+        sections.forEach(s => {
+          const pct = Math.round((s.score || 0) * 100);
+          lawContainer.innerHTML += `
+            <div class="bg-[var(--paper-2)] border border-[var(--rule)]/50 rounded-lg p-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-semibold text-[var(--navy-deep)]">${s.act || ""} — Section ${s.section_number || ""}</span>
+                <span class="text-xs font-mono px-2 py-0.5 rounded-full ${pct >= 70 ? "bg-[#5C8A6A]/15 text-[#4A7156]" : pct >= 50 ? "bg-[var(--gold)]/15 text-[#8C6D1F]" : "bg-gray-100 text-gray-500"}">${pct}% match</span>
+              </div>
+              ${s.section_title ? '<p class="text-xs text-[var(--muted)] mb-1">' + s.section_title + "</p>" : ""}
+              ${s.excerpt ? '<p class="text-xs text-[var(--ink)]/70 leading-relaxed">' + s.excerpt + "</p>" : ""}
+            </div>`;
+        });
+      }
 
       // Update evidence lists
       const evAvailList = document.getElementById("evidence-available-list");
