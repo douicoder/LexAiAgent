@@ -418,7 +418,7 @@
     }
 
     async function ensureBackendAwake() {
-      const healthUrl = API.replace("/api/v1", "") + "/health";
+      const healthUrl = API.replace(/\/api\/v1.*$/, "") + "/health";
       let attempts = 0;
       while (attempts < 20) {
         try {
