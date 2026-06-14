@@ -56,6 +56,7 @@ token.tmp
 backend/lexagent.db
 
 # Local documentation
+explanation.md
 
 # Law document inputs
 backend/law_docs/*
