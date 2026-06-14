@@ -57,6 +57,8 @@ backend/lexagent.db
 
 # Local documentation
 explanation.md
+explanation_detail.md
+PRD.md
 
 # Law document inputs
 backend/law_docs/*
