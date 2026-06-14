@@ -385,6 +385,17 @@
       if (!description) { alert("Please describe your legal problem first."); return; }
 
       document.getElementById("improve-btn").disabled = true;
+      document.getElementById("improve-btn").textContent = "Connecting...";
+
+      try {
+        await ensureBackendAwake();
+      } catch (e) {
+        alert("Error: " + e.message + " Please check if the backend is running.");
+        document.getElementById("improve-btn").disabled = false;
+        document.getElementById("improve-btn").textContent = "Improve Query";
+        return;
+      }
+
       document.getElementById("improve-btn").textContent = "Improving...";
 
       try {
@@ -719,6 +730,17 @@
       document.getElementById("results-section").classList.add("hidden");
       document.getElementById("loading-update").classList.remove("hidden");
 
+      try {
+        await ensureBackendAwake();
+      } catch (e) {
+        alert("Error: " + e.message + " Please check if the backend is running.");
+        document.getElementById("loading-update").classList.add("hidden");
+        document.getElementById("results-section").classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Update Score & Documents";
+        return;
+      }
+
       const evKeys = Object.keys(evidenceChecked);
       const sugKeys = Object.keys(suggestionChecked);
 
@@ -978,6 +1000,13 @@
       const contentArea = document.getElementById("doc-content");
       const notice = contentArea.value;
       if (!notice) { alert("No document content to download."); return; }
+
+      try {
+        await ensureBackendAwake();
+      } catch (e) {
+        alert("Error: " + e.message + " Please check if the backend is running.");
+        return;
+      }
 
       try {
         const res = await fetch(API + "/pdf", {
