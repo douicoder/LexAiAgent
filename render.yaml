@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: lexagent-backend
+    env: docker
+    rootDir: backend
+    plan: free
+    envVars:
+      - key: LLM_MODEL
+        value: google/gemini-2.0-flash-001
+      - key: FAST_MODEL
+        value: openai/gpt-oss-20b:free
+      - key: LLM_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: EMBEDDING_MODEL
+        value: openai/text-embedding-3-small
+      - key: EMBEDDING_BASE_URL
+        value: https://models.github.ai/inference
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./lexagent.db
+      - key: APP_ENV
+        value: production
+      - key: CORS_ORIGINS
+        value: "*"
