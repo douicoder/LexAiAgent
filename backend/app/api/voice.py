@@ -4,6 +4,8 @@ import numpy as np
 import soundfile as sf
 from fastapi import APIRouter, Form, UploadFile, HTTPException
 
+from app.config import settings
+
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 _whisper = None
@@ -15,7 +17,7 @@ def get_whisper():
         from transformers import pipeline
         _whisper = pipeline(
             "automatic-speech-recognition",
-            model="openai/whisper-base",
+            model=settings.WHISPER_MODEL,
             chunk_length_s=30,
         )
     return _whisper

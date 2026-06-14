@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     FAST_MODEL: str = "gpt-4o"
     LLM_BASE_URL: str = "https://models.github.ai/inference"
     LLM_API_KEY: str | None = None
+    WHISPER_MODEL: str = "openai/whisper-base"
     SUPABASE_STORAGE_BUCKET: str = "legal-notices"
     DATABASE: str = "supabase"  # "supabase" | "sqlite"
     

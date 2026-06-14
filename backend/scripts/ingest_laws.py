@@ -31,7 +31,8 @@ args = parser.parse_known_args()[0]
 skip_acts = [a.strip() for a in args.skip_acts.split(",") if a.strip()]
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────
-GITHUB_TOKEN = settings.GITHUB_TOKEN
+EMBEDDING_API_KEY = settings.EMBEDDING_API_KEY or settings.GITHUB_TOKEN
+EMBEDDING_BASE_URL = settings.EMBEDDING_BASE_URL
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_KEY = settings.SUPABASE_KEY
 
@@ -54,8 +55,8 @@ SECTION_PATTERN = re.compile(
 MAX_SECTION_WORDS = 4000
 
 # ── SETUP CLIENTS ───────────────────────────────────────────────────────────
-if not GITHUB_TOKEN:
-    print("ERROR: GITHUB_TOKEN is missing in your .env file!")
+if not EMBEDDING_API_KEY:
+    print("ERROR: EMBEDDING_API_KEY or GITHUB_TOKEN is missing in your .env file!")
     sys.exit(1)
 
 if not SUPABASE_URL or not SUPABASE_KEY:
@@ -63,8 +64,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 
 client = OpenAI(
-    api_key=GITHUB_TOKEN,
-    base_url="https://models.github.ai/inference"
+    api_key=EMBEDDING_API_KEY,
+    base_url=EMBEDDING_BASE_URL
 )
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 

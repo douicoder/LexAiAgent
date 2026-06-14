@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.dto.agent_dto import AnalyzeRequestDTO, AnalyzeResponseDTO
-from app.services.agent_service import AgentService
+from app.services.agent_service import AgentService, AVAILABLE_LAW_DOCS
 from app.services.pdf_service import PdfService
 from app.services.rag_service import RagService
 
@@ -46,6 +46,7 @@ async def demo_analyze(body: dict):
         return await agent.analyze_case(request)
     except Exception as e:
         logger.exception("Analysis failed")
+        docs_list = ", ".join(AVAILABLE_LAW_DOCS) if AVAILABLE_LAW_DOCS else "none available"
         return AnalyzeResponseDTO(
             case_type="other",
             severity="low",
@@ -54,10 +55,10 @@ async def demo_analyze(body: dict):
             summary="",
             next_steps=[],
             reasoning_trace=f"Error: {e}",
-            ai_message=f"Analysis failed: {str(e)}. Please try again or check that the backend services (LLM API, RAG database) are configured correctly.",
+            ai_message=f"Not enough data to proceed. Currently our database only has documents regarding: {docs_list}. Please provide more details about your case.",
             case_readiness_score=0,
             is_sufficient=False,
-            law_docs_available=[],
+            law_docs_available=AVAILABLE_LAW_DOCS,
             law_docs_coverage="",
         )
 
@@ -79,7 +80,7 @@ async def demo_update_evidence(body: dict):
             summary="",
             next_steps=[],
             reasoning_trace=f"Error: {e}",
-            ai_message=f"Update failed: {str(e)}. Please try again.",
+            ai_message="Unable to update evidence. Please try again.",
             case_readiness_score=0,
             is_sufficient=False,
             law_docs_available=[],
