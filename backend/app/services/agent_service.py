@@ -419,11 +419,18 @@ class AgentService:
         # ═══════════════════════════════════════════════════════════════════
         # Clean legal notice — strip any analysis/reasoning before the actual document
         legal_notice = self._clean_legal_notice(notice_text)
+        legal_notice = legal_notice.replace("\\n", "\n")
         # Parse evidence/summary
         try:
             evidence_data = _extract_json(evidence_text)
         except ValueError:
             evidence_data = {}
+        
+        logger.info(f"Evidence raw text (first 500 chars): {evidence_text[:500]}")
+        logger.info(f"Evidence data keys: {list(evidence_data.keys())}")
+        logger.info(f"Evidence summary: '{evidence_data.get('summary', 'MISSING')}'")
+        logger.info(f"Evidence score: {evidence_data.get('case_readiness_score', 'MISSING')}")
+        logger.info(f"Evidence missing count: {len(evidence_data.get('evidence_missing', []))}")
 
         # Parse legal notice (cleaned)
         # legal_notice already set above by _clean_legal_notice
@@ -436,11 +443,13 @@ class AgentService:
 
         other_documents = []
         for doc in docs_data.get("other_documents", []):
+            content = doc.get("content", "")
+            content = content.replace("\\n", "\n")
             other_documents.append(DocumentDTO(
                 id=_generate_doc_id(), case_id="",
                 doc_type=doc.get("doc_type", "document"),
                 title=doc.get("title", "Legal Document"),
-                content=doc.get("content", ""), status="draft",
+                content=content, status="draft",
             ))
 
         # Parse action plan
@@ -480,11 +489,11 @@ class AgentService:
             action_buttons=action_buttons or [ActionButton(label="Download Documents", message="Download all generated documents", style="primary")],
             ai_message=evidence_data.get("ai_message", "I've analyzed your case. Here's a step-by-step plan to help you resolve this matter."),
             case_readiness_score=evidence_data.get("case_readiness_score", 0),
-            evidence_available=evidence_data.get("evidence_available", []),
-            evidence_missing=evidence_data.get("evidence_missing", []),
-            evidence_suggestions=evidence_data.get("evidence_suggestions", []),
-            risk_level=evidence_data.get("risk_level", "medium"),
-            recommended_actions=evidence_data.get("recommended_actions", []),
+            evidence_available=[str(x) for x in evidence_data.get("evidence_available", [])],
+            evidence_missing=[str(x) for x in evidence_data.get("evidence_missing", [])],
+            evidence_suggestions=[str(x) for x in evidence_data.get("evidence_suggestions", [])],
+            risk_level=str(evidence_data.get("risk_level", "medium")),
+            recommended_actions=[str(x) for x in evidence_data.get("recommended_actions", [])],
             is_sufficient=True,
             law_docs_available=AVAILABLE_LAW_DOCS,
             law_docs_coverage=self._get_coverage(case_type),
