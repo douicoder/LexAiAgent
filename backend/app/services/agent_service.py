@@ -40,7 +40,9 @@ AVAILABLE_LAW_DOCS = [
 def _extract_json(text: str) -> dict:
     text = text.strip()
     if not text:
-        raise ValueError("Empty text, no JSON object found")
+        return {}
+        
+    import json
     for start in range(len(text)):
         if text[start] != "{":
             continue
@@ -55,7 +57,7 @@ def _extract_json(text: str) -> dict:
             if ch == "\\":
                 escaped = True
                 continue
-            if ch == '"' and not escaped:
+            if ch == '"':
                 in_string = not in_string
                 continue
             if in_string:
@@ -65,8 +67,39 @@ def _extract_json(text: str) -> dict:
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    return json.loads(text[start : i + 1])
-    raise ValueError("No valid JSON object found in text")
+                    try:
+                        return json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        pass
+                        
+    # FALLBACK: If JSON is truncated or invalid, manually extract fields via regex
+    import re
+    result = {}
+    
+    # 1. Extract string fields ("key": "value")
+    for match in re.finditer(r'"([^"]+)"\s*:\s*"([^"]+)"', text):
+        result[match.group(1)] = match.group(2)
+        
+    # 2. Extract integer/boolean fields ("key": 123)
+    for match in re.finditer(r'"([^"]+)"\s*:\s*(\d+|true|false)', text, re.IGNORECASE):
+        key = match.group(1)
+        val = match.group(2).lower()
+        if val == "true": result[key] = True
+        elif val == "false": result[key] = False
+        else: result[key] = int(val)
+        
+    # 3. Extract string arrays ("key": ["val1", "val2"]) even if truncated
+    # Append ] to satisfy the non-greedy match if truncated
+    for match in re.finditer(r'"([^"]+)"\s*:\s*\[(.*?)\]', text + "]", re.DOTALL):
+        key = match.group(1)
+        if key not in result: # Don't overwrite if parsed differently
+            arr_text = match.group(2)
+            # Find all strings in the array content
+            items = re.findall(r'"([^"]+)"', arr_text)
+            if items:
+                result[key] = items
+                
+    return result
 
 
 def _generate_doc_id() -> str:
