@@ -60,6 +60,9 @@ explanation.md
 explanation_detail.md
 PRD.md
 
+# Vercel build output
+.vercel/
+
 # Law document inputs
 backend/law_docs/*
 !backend/law_docs/.gitkeep

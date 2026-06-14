@@ -291,6 +291,44 @@ All configuration lives in `backend/.env`. See `backend/.env.example` for the fu
 
 ---
 
+## Deploy to Vercel
+
+The frontend can be deployed as a static site on Vercel.
+
+### Prerequisites
+- Backend deployed and running (e.g., on Render, Railway, or a VPS)
+- Vercel account (free tier works)
+
+### Steps
+
+1. **Update the API URL** in `public/index.html`:
+   ```html
+   <meta name="api-url" content="https://your-backend-url.onrender.com/api/v1/demo">
+   ```
+
+2. **Push to GitHub:**
+   ```bash
+   git add public/ vercel.json
+   git commit -m "Add Vercel deployment config"
+   git push
+   ```
+
+3. **Deploy on Vercel:**
+   - Go to [vercel.com/new](https://vercel.com/new)
+   - Import your GitHub repository
+   - Vercel will auto-detect the `vercel.json` config
+   - Click **Deploy**
+
+4. **Done!** Your frontend is live at `https://your-project.vercel.app`
+
+### How it works
+- `public/index.html` is the main SPA
+- `vercel.json` routes all requests to this file
+- The `<meta name="api-url">` tag tells the frontend where the backend is
+- All API calls go directly from the browser to your backend
+
+---
+
 ## Known Limitations
 
 - Demo mode only — no authentication, no case persistence
