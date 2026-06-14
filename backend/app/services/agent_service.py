@@ -147,6 +147,25 @@ class AgentService:
             description = await self.text.translate_to_english(description)
         return await self._run_llm_analysis(description)
 
+    async def improve_prompt(self, description: str) -> str:
+        prompt = (
+            f"Improve this legal case description for better analysis.\n\n"
+            f"Original: {description}\n\n"
+            f"Rules:\n"
+            f"1. Add [SQUARE BRACKETS] for any missing personal details (names, addresses, phone numbers, emails)\n"
+            f"2. Add [SQUARE BRACKETS] for missing dates, amounts, or property details\n"
+            f"3. Add helpful hints inside brackets like [Your Name], [Landlord Name], [Property Address]\n"
+            f"4. Keep the original meaning and facts intact\n"
+            f"5. Make the language clearer and more specific\n"
+            f"6. Structure it logically: who, what, when, where, how much\n"
+            f"7. Do NOT invent any facts — only add placeholders for missing info\n\n"
+            f"Return ONLY the improved description. No explanation, no JSON."
+        )
+        return await self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": "You are a legal assistant that improves case descriptions."},
+            {"role": "user", "content": prompt},
+        ], 2000)
+
     async def update_evidence(
         self,
         description: str,
@@ -220,16 +239,17 @@ class AgentService:
         logger.info(f"Classification: type={classification.get('case_type')}, role={classification.get('user_role')}, vague={is_vague}")
         reasoning_trace.append(f"[classify] {classification.get('case_type')} / {classification.get('user_role')}")
 
-        if is_vague and vague_questions:
-            return AnalyzeResponseDTO(
-                case_type="other", severity="low", legal_domain="Other",
-                relevant_sections=[], summary=[], next_steps=[],
-                reasoning_trace="\n".join(reasoning_trace),
-                clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions],
-                ai_message="I need more information. Please answer these questions.",
-                case_readiness_score=0, is_sufficient=False,
-                law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
-            )
+        # Clarifying questions disabled for now — always proceed with analysis
+        # if is_vague and vague_questions:
+        #     return AnalyzeResponseDTO(
+        #         case_type="other", severity="low", legal_domain="Other",
+        #         relevant_sections=[], summary=[], next_steps=[],
+        #         reasoning_trace="\n".join(reasoning_trace),
+        #         clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions],
+        #         ai_message="I need more information. Please answer these questions.",
+        #         case_readiness_score=0, is_sufficient=False,
+        #         law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
+        #     )
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 2: Search RAG for relevant laws

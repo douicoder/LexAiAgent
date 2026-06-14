@@ -48,9 +48,14 @@
         <button onclick="fillScenario(2)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors">Lease termination</button>
         <button onclick="fillScenario(3)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors">Property damage</button>
       </div>
-      <button id="analyze-btn" onclick="analyze()" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-        Analyze Case
-      </button>
+      <div class="flex gap-2 mt-4">
+        <button id="improve-btn" onclick="improvePrompt()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Improve Prompt
+        </button>
+        <button id="analyze-btn" onclick="analyze()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Analyze Case
+        </button>
+      </div>
     </div>
 
     <!-- Progress Steps -->
@@ -279,6 +284,33 @@
           label.className = "text-sm text-gray-500";
         }
       });
+    }
+
+    async function improvePrompt() {
+      const input = document.getElementById("problem-input");
+      const description = input.value.trim();
+      if (!description) { alert("Please describe your legal problem first."); return; }
+
+      document.getElementById("improve-btn").disabled = true;
+      document.getElementById("improve-btn").textContent = "Improving...";
+
+      try {
+        const res = await fetch(API + "/improve-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description }),
+        });
+        if (!res.ok) throw new Error("Server error");
+        const data = await res.json();
+        if (data.improved) {
+          input.value = data.improved;
+        }
+      } catch (err) {
+        console.error("Improve prompt failed:", err);
+      } finally {
+        document.getElementById("improve-btn").disabled = false;
+        document.getElementById("improve-btn").textContent = "Improve Prompt";
+      }
     }
 
     async function analyze() {

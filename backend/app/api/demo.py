@@ -17,6 +17,21 @@ rag = RagService()
 agent = AgentService(rag)
 
 
+@router.post("/improve-prompt")
+async def demo_improve_prompt(body: dict):
+    description = body.get("description", "")
+    logger.info(f"Improve prompt request: {len(description)} chars")
+    if not description.strip():
+        return {"improved": "", "original": ""}
+    try:
+        improved = await agent.improve_prompt(description)
+        logger.info(f"Improve prompt complete: {len(improved)} chars")
+        return {"improved": improved, "original": description}
+    except Exception as e:
+        logger.exception("Improve prompt failed")
+        return {"improved": description, "original": description}
+
+
 @router.post("/analyze")
 async def demo_analyze(body: dict):
     description = body.get("description", "")
