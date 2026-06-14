@@ -251,17 +251,16 @@ class AgentService:
         logger.info(f"Classification: type={classification.get('case_type')}, role={classification.get('user_role')}, vague={is_vague}")
         reasoning_trace.append(f"[classify] {classification.get('case_type')} / {classification.get('user_role')}")
 
-        # Clarifying questions disabled for now — always proceed with analysis
-        # if is_vague and vague_questions:
-        #     return AnalyzeResponseDTO(
-        #         case_type="other", severity="low", legal_domain="Other",
-        #         relevant_sections=[], summary=[], next_steps=[],
-        #         reasoning_trace="\n".join(reasoning_trace),
-        #         clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions],
-        #         ai_message="I need more information. Please answer these questions.",
-        #         case_readiness_score=0, is_sufficient=False,
-        #         law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
-        #     )
+        if is_vague:
+            return AnalyzeResponseDTO(
+                case_type="other", severity="low", legal_domain="Other",
+                relevant_sections=[], summary=[], next_steps=[],
+                reasoning_trace="\n".join(reasoning_trace),
+                clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions] if vague_questions else [],
+                ai_message="Your description is too vague. Please provide more details: what happened, who is involved, when did it happen, and any amounts or documents you have.",
+                case_readiness_score=0, is_sufficient=False,
+                law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
+            )
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 2: Search RAG for relevant laws
