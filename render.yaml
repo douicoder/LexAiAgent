@@ -43,6 +43,6 @@ services:
     startCommand: gunicorn app:app
     envVars:
       - key: API_BASE_URL
-        value: https://lexagent-backend.onrender.com/api/v1
+        sync: false
       - key: SECRET_KEY
         sync: false
