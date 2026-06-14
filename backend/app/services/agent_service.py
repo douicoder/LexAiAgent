@@ -377,9 +377,20 @@ class AgentService:
             f"Generate a step-by-step action plan for this legal case.\n\n"
             f"Case: {description}\n"
             f"User role: {user_role}\n\n"
-            f"IMPORTANT: Each step must be ONE clear, specific action. "
-            f"Do NOT combine multiple actions into one step. "
-            f"Use simple, clear language anyone can understand.\n"
+            f"CRITICAL RULES:\n"
+            f"1. Each step MUST be ONE single action only.\n"
+            f"2. Do NOT combine multiple actions into one step.\n"
+            f"3. Do NOT say 'and' within a step — if you use 'and', split into two steps.\n"
+            f"4. Each step should be 1-2 sentences maximum.\n"
+            f"5. Generate at least 5-6 steps.\n\n"
+            f"BAD examples (DO NOT do this):\n"
+            f'- "Collect evidence AND file complaint AND seek legal advice"\n'
+            f'- "Preserve all documents, take photos, and keep a log"\n\n'
+            f"GOOD examples (DO this):\n"
+            f'- "Gather your lease agreement and any payment receipts"\n'
+            f'- "Take photos of the property condition"\n'
+            f'- "File a police complaint for illegal eviction"\n'
+            f'- "Consult a lawyer about filing a compensation case"\n\n'
             f"Return ONLY valid JSON:\n"
             f'{{"next_steps": ['
             f'{{"number": 1, "text": "step description", "action_type": "info_gathering", "action_config": {{}}}}, '
