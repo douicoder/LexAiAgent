@@ -33,3 +33,16 @@ services:
         value: production
       - key: CORS_ORIGINS
         value: "*"
+
+  - type: web
+    name: lexagent-frontend
+    env: python
+    rootDir: frontend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: API_BASE_URL
+        value: https://lexagent-backend.onrender.com/api/v1
+      - key: SECRET_KEY
+        sync: false
