@@ -259,10 +259,10 @@ class AgentService:
         if is_vague:
             return AnalyzeResponseDTO(
                 case_type="other", severity="low", legal_domain="Other",
-                relevant_sections=[], summary=[], next_steps=[],
+                relevant_sections=[], summary="Insufficient data to proceed. Currently our database only has documents regarding: Model Tenancy Act, 2021, Transfer of Property Act, 1882, Registration Act, 1908. Please provide more details about your case.", next_steps=[],
                 reasoning_trace="\n".join(reasoning_trace),
-                clarifying_questions=[ClarifyingQuestion(question=q["question"], key=q["key"]) for q in vague_questions] if vague_questions else [],
-                ai_message="Your description is too vague. Please provide more details: what happened, who is involved, when did it happen, and any amounts or documents you have.",
+                clarifying_questions=[],
+                ai_message="Not enough data to proceed. Please provide more details: what happened, who is involved, when did it happen, and any amounts or documents you have.",
                 case_readiness_score=0, is_sufficient=False,
                 law_docs_available=AVAILABLE_LAW_DOCS, law_docs_coverage="",
             )
