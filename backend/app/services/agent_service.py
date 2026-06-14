@@ -263,15 +263,24 @@ class AgentService:
         evidence_prompt = (
             f"{base_context}\n"
             f"Return ONLY valid JSON with these keys:\n"
-            f'{{"summary": "2-3 sentence case summary", '
-            f'"ai_message": "warm 2-3 sentence message to the user", '
+            f'{{"summary": "2-3 sentence case summary in plain language", '
+            f'"ai_message": "warm 2-3 sentence message to the user in plain language", '
             f'"evidence_missing": ["evidence item 1", ...], '
             f'"evidence_suggestions": ["suggestion 1", ...], '
             f'"evidence_available": ["likely evidence 1", ...], '
             f'"case_readiness_score": 0-100, '
             f'"risk_level": "low|medium|high", '
             f'"recommended_actions": ["action 1", ...]}}\n'
-            f"Readiness: 0-10 vague, 15-30 short, 30-50 detailed, 50-80+detailed with evidence, 80-100 fully documented."
+            f"BRUTALLY HONEST readiness scoring: "
+            f"0-10 very vague with almost no detail, "
+            f"15-30 short description but missing key facts (names, dates, amounts), "
+            f"30-50 detailed but NO evidence attached, "
+            f"50-70 detailed with SOME evidence but gaps remain, "
+            f"70-85 strong case with good evidence, "
+            f"85-100 fully documented with strong evidence and clear legal basis.\n"
+            f"IMPORTANT: Do NOT give high scores to vague or incomplete descriptions. "
+            f"If the user has not provided names, dates, amounts, or evidence, score below 30.\n"
+            f"Use simple, clear language anyone can understand."
         )
 
         # --- Call B: Legal Notice ---
@@ -283,14 +292,17 @@ class AgentService:
             f"FORMAT — follow this EXACTLY, no extra text:\n"
             f"---\n"
             f"LEGAL NOTICE\n\n"
-            f"TO:\n[Name]\n[Address]\n\n"
-            f"FROM:\n[Name]\n[Address]\n\n"
+            f"TO:\n[OPPOSING PARTY NAME]\n[OPPOSING PARTY ADDRESS]\n\n"
+            f"FROM:\n[YOUR NAME]\n[YOUR ADDRESS]\n\n"
             f"Date: {today}\n\n"
             f"SUBJECT: [brief subject]\n\n"
             f"Dear Sir/Madam,\n\n"
             f"[2-3 paragraphs: state the facts, cite the legal grounds with specific sections, state the demand]\n\n"
             f"DEMAND:\n[clear demand with deadline]\n\n"
-            f"Yours faithfully,\n[Name]\n[Phone]\n[Email]\n---\n\n"
+            f"Yours faithfully,\n[YOUR NAME]\n[YOUR PHONE]\n[YOUR EMAIL]\n---\n\n"
+            f"IMPORTANT: Use [SQUARE BRACKETS] for ALL names, addresses, phone numbers, emails, and amounts. "
+            f"DO NOT invent or hallucinate any personal details. The user will fill these in later.\n"
+            f"Use simple, clear language anyone can understand.\n"
             f"Return ONLY the document text between the --- markers. No analysis, no JSON, no explanation."
         )
 
@@ -302,6 +314,9 @@ class AgentService:
             f"Applicable laws: {section_refs}\n\n"
             f"DOCUMENT 1 - Demand Letter: Formal demand from {user_role} to opposing party. 2-3 paragraphs.\n"
             f"DOCUMENT 2 - Complaint: Formal complaint/petition for filing. Structured with facts, legal grounds, prayer.\n\n"
+            f"IMPORTANT: Use [SQUARE BRACKETS] for ALL names, addresses, phone numbers, emails, and amounts. "
+            f"DO NOT invent or hallucinate any personal details.\n"
+            f"Use simple, clear language anyone can understand.\n"
             f"Both must be clean legal documents. No analysis text, no reasoning.\n\n"
             f"Return ONLY valid JSON:\n"
             f'{{"other_documents": [{{"doc_type": "demand_letter", "title": "Demand Letter", "content": "full document text here"}}, {{"doc_type": "complaint", "title": "Complaint", "content": "full document text here"}}]}}'
@@ -312,6 +327,9 @@ class AgentService:
             f"Generate a step-by-step action plan for this legal case.\n\n"
             f"Case: {description}\n"
             f"User role: {user_role}\n\n"
+            f"IMPORTANT: Each step must be ONE clear, specific action. "
+            f"Do NOT combine multiple actions into one step. "
+            f"Use simple, clear language anyone can understand.\n"
             f"Return ONLY valid JSON:\n"
             f'{{"next_steps": ['
             f'{{"number": 1, "text": "step description", "action_type": "info_gathering", "action_config": {{}}}}, '
