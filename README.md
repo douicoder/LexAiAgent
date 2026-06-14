@@ -291,64 +291,57 @@ All configuration lives in `backend/.env`. See `backend/.env.example` for the fu
 
 ---
 
-## Deploy to Vercel
+## Deploy
 
-Both frontend and backend can be deployed to Vercel as a single project.
+### Option A: Backend on Render + Frontend on Vercel (Recommended)
 
-### How it works
-- **Frontend:** `public/index.html` served as static files
-- **Backend:** `api/index.py` runs as a Python serverless function
-- All routes go through the same Vercel domain
+**Backend (Render):**
 
-### Steps
-
-1. **Add environment variables on Vercel:**
-   - Go to your project Settings → Environment Variables
-   - Add all keys from `backend/.env`:
-     ```
-     LLM_API_KEY=sk-or-...
-     LLM_BASE_URL=https://openrouter.ai/api/v1
-     LLM_MODEL=google/gemini-2.0-flash-001
-     FAST_MODEL=openai/gpt-oss-20b:free
-     EMBEDDING_API_KEY=ghp_...
-     EMBEDDING_BASE_URL=https://models.github.ai/inference
-     EMBEDDING_MODEL=openai/text-embedding-3-small
-     SUPABASE_URL=https://xxx.supabase.co
-     SUPABASE_KEY=eyJ...
-     SUPABASE_SERVICE_KEY=eyJ...
-     GITHUB_TOKEN=ghp_...
-     GITHUB_TOKEN_2=ghp_...
-     ```
-
-2. **Push to GitHub:**
-   ```bash
-   git add api/ public/ vercel.json requirements.txt
-   git commit -m "Add full Vercel deployment"
-   git push
+1. Go to [render.com](https://render.com) and sign up
+2. Click **New → Web Service**
+3. Connect your GitHub repo
+4. Configure:
+   - **Name:** `lexaiagent-backend`
+   - **Runtime:** Python
+   - **Build Command:** `pip install -r backend/requirements.txt`
+   - **Start Command:** `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+5. Go to **Environment** tab and add all keys from `backend/.env`:
    ```
+   LLM_API_KEY=sk-or-...
+   LLM_BASE_URL=https://openrouter.ai/api/v1
+   LLM_MODEL=google/gemini-2.0-flash-001
+   FAST_MODEL=openai/gpt-oss-20b:free
+   EMBEDDING_API_KEY=ghp_...
+   EMBEDDING_BASE_URL=https://models.github.ai/inference
+   SUPABASE_URL=https://xxx.supabase.co
+   SUPABASE_KEY=eyJ...
+   SUPABASE_SERVICE_KEY=eyJ...
+   GITHUB_TOKEN=ghp_...
+   GITHUB_TOKEN_2=ghp_...
+   ```
+6. Click **Create Web Service**
+7. Wait for deploy — your backend is live at `https://lexaiagent-backend.onrender.com`
 
-3. **Deploy on Vercel:**
-   - Go to [vercel.com/new](https://vercel.com/new)
-   - Import your GitHub repository
-   - Vercel auto-detects the config
-   - Click **Deploy**
+**Frontend (Vercel):**
 
-4. **Done!**
-   - Frontend: `https://your-project.vercel.app`
-   - Backend API: `https://your-project.vercel.app/api/v1/demo/analyze`
-   - Health check: `https://your-project.vercel.app/health`
+1. Update `public/index.html` line 6 with your Render URL:
+   ```html
+   <meta name="api-url" content="https://lexaiagent-backend.onrender.com/api/v1/demo">
+   ```
+2. Push to GitHub
+3. Go to [vercel.com/new](https://vercel.com/new) → Import repo → Deploy
+4. Your frontend is live at `https://your-project.vercel.app`
 
-### Important notes
-- Vercel serverless functions have a **10 second** timeout on free tier
-- The analysis pipeline takes ~15-25 seconds — this may timeout on free tier
-- Consider upgrading to Pro ($20/month) for 60 second timeout
-- Or deploy backend separately on Render/Railway (free, no timeout)
+---
 
-### How it works
-- `public/index.html` is the main SPA
-- `vercel.json` routes all requests to this file
-- The `<meta name="api-url">` tag tells the frontend where the backend is
-- All API calls go directly from the browser to your backend
+### Option B: Everything on Vercel
+
+Both frontend and backend on Vercel (serverless functions).
+
+**Note:** Vercel free tier has 10s timeout. Analysis takes 15-25s. May need Pro plan ($20/mo).
+
+1. Add environment variables on Vercel (Settings → Environment Variables)
+2. Push and deploy — Vercel auto-detects the config
 
 ---
 
