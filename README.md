@@ -17,10 +17,12 @@ LexAiAgent is a web-based legal aid system that helps ordinary people understand
 4. It generates legal notices, demand letters, and supporting documents
 5. It gives you a prioritized action plan
 
-**Currently supports:** Indian property and tenancy law
+**Currently loaded:** Indian property and tenancy law
 - Model Tenancy Act 2021
 - Transfer of Property Act 1882
 - Registration Act 1908
+
+**Extensible:** Drop any Indian law PDF into `backend/law_docs/` and run `python scripts/ingest_laws.py` — no code changes needed.
 
 ---
 
@@ -289,17 +291,14 @@ All configuration lives in `backend/.env`. See `backend/.env.example` for the fu
 
 ## Known Limitations
 
-- Only 3 Indian law acts are indexed (property/tenancy)
-- No authentication or user accounts
-- Demo mode only — no case persistence
+- Demo mode only — no authentication, no case persistence
 - Rate limits on free-tier APIs may cause delays
-- Read-only law corpus — requires re-ingestion for new laws
+- Law corpus must be re-ingested when new PDFs are added
 
 ---
 
 ## Future Scope
 
-- More laws: criminal, consumer, employment, family law
 - Multi-language support: Hindi, Tamil, Bengali, etc.
 - Voice input for describing legal problems
 - Conversational chat interface
