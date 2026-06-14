@@ -171,6 +171,7 @@ class AgentService:
         description: str,
         evidence_available: list[str],
         evidence_missing: list[str],
+        document_modifications: dict[str, str] | None = None,
     ) -> AnalyzeResponseDTO:
         evidence_context = (
             f"The user has confirmed they have the following evidence:\n"
@@ -178,10 +179,21 @@ class AgentService:
             + "\n\nThe following evidence is still missing:\n"
             + "\n".join(f"- {e}" for e in evidence_missing)
         )
+        mod_context = ""
+        if document_modifications:
+            mod_parts = []
+            for doc_type, content in document_modifications.items():
+                if content.strip():
+                    mod_parts.append(f"User's modified {doc_type}:\n{content[:2000]}")
+            if mod_parts:
+                mod_context = "\n\nUser has modified these documents. Preserve their changes and strengthen the rest:\n" + "\n\n".join(mod_parts)
+
         full_prompt = (
             f"Original case description:\n{description}\n\n"
-            f"Updated evidence status:\n{evidence_context}\n\n"
+            f"Updated evidence status:\n{evidence_context}\n"
+            f"{mod_context}\n\n"
             f"Regenerate the full legal analysis with updated documents reflecting the confirmed evidence. "
+            f"Preserve any user modifications to documents. "
             f"Strengthen the legal documents by referencing the confirmed evidence. "
             f"Recalculate the case_readiness_score based on the evidence now available."
         )
@@ -296,7 +308,7 @@ class AgentService:
             f"Return ONLY valid JSON with these keys:\n"
             f'{{"summary": "2-3 sentence case summary in plain language", '
             f'"ai_message": "warm 2-3 sentence message to the user in plain language", '
-            f'"evidence_missing": ["evidence item 1", ...], '
+            f'"evidence_missing": ["evidence item 1", "evidence item 2", ...], '
             f'"evidence_suggestions": ["suggestion 1", ...], '
             f'"evidence_available": ["likely evidence 1", ...], '
             f'"case_readiness_score": 0-100, '
@@ -311,6 +323,9 @@ class AgentService:
             f"85-100 fully documented with strong evidence and clear legal basis.\n"
             f"IMPORTANT: Do NOT give high scores to vague or incomplete descriptions. "
             f"If the user has not provided names, dates, amounts, or evidence, score below 30.\n"
+            f"CRITICAL: You MUST return evidence_missing as an array with at least 3-5 specific evidence items "
+            f"that would strengthen this case (e.g., lease agreement, payment receipts, photos, chat messages, etc.). "
+            f"Never return an empty evidence_missing array.\n"
             f"Use simple, clear language anyone can understand."
         )
 

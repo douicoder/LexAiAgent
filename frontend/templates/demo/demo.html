@@ -255,6 +255,8 @@
     let evidenceChecked = {};
     let suggestionChecked = {};
     let baseScore = 0;
+    let currentDocs = [];
+    let activeDocIndex = 0;
 
     function fillScenario(n) {
       document.getElementById("problem-input").value = scenarios[n] || "";
@@ -606,6 +608,13 @@
         return (currentData.evidence_suggestions || [])[idx];
       }).filter(Boolean);
 
+      const documentModifications = {};
+      currentDocs.forEach(doc => {
+        if (doc.content) {
+          documentModifications[doc.id] = doc.content;
+        }
+      });
+
       try {
         const res = await fetch(API + "/update-evidence", {
           method: "POST",
@@ -614,6 +623,7 @@
             description: userDescription,
             evidence_available: evAvailable.concat(sugAvailable),
             evidence_missing: evMissing,
+            document_modifications: documentModifications,
           }),
         });
         if (!res.ok) throw new Error("Update failed");
@@ -748,17 +758,17 @@
       const contentArea = document.getElementById("doc-content");
       tabsContainer.innerHTML = "";
 
-      const docs = [];
+      currentDocs = [];
       if (data.legal_notice_draft) {
-        docs.push({ id: "legal-notice", title: "Legal Notice", content: data.legal_notice_draft });
+        currentDocs.push({ id: "legal-notice", title: "Legal Notice", content: data.legal_notice_draft });
       }
       if (data.other_documents && data.other_documents.length > 0) {
         data.other_documents.forEach((d, i) => {
-          docs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: d.content || "" });
+          currentDocs.push({ id: "doc-" + i, title: d.title || "Document " + (i + 1), content: d.content || "" });
         });
       }
 
-      if (docs.length === 0) {
+      if (currentDocs.length === 0) {
         tabsContainer.innerHTML = '<p class="text-sm text-gray-400 italic py-2">No documents generated.</p>';
         contentArea.value = "No documents generated.";
         document.getElementById("download-all-btn").disabled = true;
@@ -767,24 +777,31 @@
       }
       document.getElementById("draft-banner").classList.remove("hidden");
 
-      let activeTab = 0;
-      docs.forEach((doc, i) => {
+      activeDocIndex = 0;
+      currentDocs.forEach((doc, i) => {
         const tab = document.createElement("button");
-        tab.className = "doc-tab px-4 py-2 text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap" + (i === activeTab ? " active" : "");
+        tab.className = "doc-tab px-4 py-2 text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap" + (i === activeDocIndex ? " active" : "");
         tab.textContent = doc.title;
         tab.onclick = () => switchDoc(i);
         tabsContainer.appendChild(tab);
       });
 
-      function switchDoc(idx) {
-        activeTab = idx;
-        const allTabs = tabsContainer.querySelectorAll(".doc-tab");
-        allTabs.forEach((t, i) => t.className = "doc-tab px-4 py-2 text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap" + (i === idx ? " active" : ""));
-        contentArea.value = docs[idx].content;
-      }
-
-      contentArea.value = docs[0].content;
+      contentArea.value = currentDocs[0].content;
       document.getElementById("download-all-btn").disabled = false;
+
+      contentArea.oninput = () => {
+        if (currentDocs[activeDocIndex]) {
+          currentDocs[activeDocIndex].content = contentArea.value;
+        }
+      };
+    }
+
+    function switchDoc(idx) {
+      activeDocIndex = idx;
+      const contentArea = document.getElementById("doc-content");
+      const allTabs = document.querySelectorAll(".doc-tab");
+      allTabs.forEach((t, i) => t.className = "doc-tab px-4 py-2 text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap" + (i === idx ? " active" : ""));
+      contentArea.value = currentDocs[idx].content;
     }
 
     async function downloadAllPdfs() {

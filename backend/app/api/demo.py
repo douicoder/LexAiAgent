@@ -86,8 +86,9 @@ async def demo_update_evidence(body: dict):
     description = body.get("description", "")
     evidence_available = body.get("evidence_available", [])
     evidence_missing = body.get("evidence_missing", [])
+    document_modifications = body.get("document_modifications", {})
     try:
-        return await agent.update_evidence(description, evidence_available, evidence_missing)
+        return await agent.update_evidence(description, evidence_available, evidence_missing, document_modifications)
     except Exception as e:
         logger.exception("Evidence update failed")
         return AnalyzeResponseDTO(
