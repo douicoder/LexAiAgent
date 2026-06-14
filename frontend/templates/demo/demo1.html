@@ -315,6 +315,28 @@
       }
     }
 
+    async function ensureBackendAwake() {
+      const healthUrl = API.replace("/api/v1", "") + "/health";
+      let attempts = 0;
+      while (attempts < 20) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          const res = await fetch(healthUrl, { method: "GET", signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) return true;
+        } catch (e) {
+          // Keep trying
+        }
+        attempts++;
+        if (attempts === 1) {
+          document.getElementById("analyze-btn").textContent = "Waking backend server (takes ~30s)...";
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+      throw new Error("Backend server failed to wake up.");
+    }
+
     async function analyze() {
       const input = document.getElementById("problem-input");
       const description = input.value.trim();
@@ -322,6 +344,17 @@
       userDescription = description;
 
       document.getElementById("analyze-btn").disabled = true;
+      document.getElementById("analyze-btn").textContent = "Connecting...";
+
+      try {
+        await ensureBackendAwake();
+      } catch (e) {
+        alert("Error: " + e.message + " Please check if the backend is running.");
+        document.getElementById("analyze-btn").disabled = false;
+        document.getElementById("analyze-btn").textContent = "Analyze Case";
+        return;
+      }
+
       document.getElementById("analyze-btn").textContent = "Analyzing...";
       document.getElementById("progress-section").classList.remove("hidden");
       document.getElementById("results-section").classList.add("hidden");
