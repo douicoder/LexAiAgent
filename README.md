@@ -1,3 +1,9 @@
+<h1 align="center"><b>AGENTIC & AUTONOMOUS SYSTEMS</b></h1>
+
+<p align="center"><i>Theme Submission for Hackathon 2026</i></p>
+
+---
+
 # LexAiAgent
 
 **AI-Powered Legal Aid for Everyone**
