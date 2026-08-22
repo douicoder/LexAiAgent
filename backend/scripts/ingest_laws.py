@@ -40,6 +40,7 @@ LAW_DOCS = [
     ("law_docs/Model_Tenancy_Act_2021.pdf",        "Model Tenancy Act 2021"),
     ("law_docs/Transfer_of_Property_Act_1882.pdf", "Transfer of Property Act 1882"),
     ("law_docs/Registration_Act_1908.pdf",         "Registration Act 1908"),
+    ("law_docs/Consumer_Protection_Act_2019.pdf",  "Consumer Protection Act 2019"),
 ]
 
 # Regex patterns for Indian legal document structure
