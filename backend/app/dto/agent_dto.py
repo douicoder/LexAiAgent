@@ -38,6 +38,26 @@ class ActionStep(BaseModel):
     status: str = "pending"
 
 
+class LegalOptionDTO(BaseModel):
+    id: str
+    name: str
+    forum: str
+    tagline: str = ""
+    recommended: bool = False
+    cost_range: str = ""
+    time_range: str = ""
+    effort: str = ""  # Low | Medium | High
+    success_likelihood: int = 0  # 0-100
+    risk_level: str = "medium"
+    pros: list[str] = []
+    cons: list[str] = []
+    evidence_required: list[str] = []
+    best_for: str = ""  # cost | time | success | risk | control
+    interoperability_note: str = ""
+    next_steps: list[str] = []
+    applicable_documents: list[str] = []
+
+
 class PersonDetailsDTO(BaseModel):
     name: str
     address: str
@@ -76,6 +96,8 @@ class AnalyzeResponseDTO(BaseModel):
     is_sufficient: bool = True
     law_docs_available: list[str] = []
     law_docs_coverage: str = ""
+    legal_options: list[LegalOptionDTO] = []
+    option_comparison_note: str = ""
 
 
 class ChatMessageDTO(BaseModel):

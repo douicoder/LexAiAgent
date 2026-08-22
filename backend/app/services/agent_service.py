@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import json
 import logging
 import re
@@ -24,8 +25,15 @@ from app.dto.agent_dto import (
 from app.helpers.legal_helper import LegalHelper
 from app.helpers.text_helper import TextHelper
 from app.interfaces.i_rag_service import IRagService
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MetaResult:
+    classification: dict
+    is_vague: bool
+    clarifying_questions: list
+
 
 LLM_MODEL = settings.LLM_MODEL
 FAST_MODEL = settings.FAST_MODEL
@@ -237,6 +245,52 @@ class AgentService:
         )
         return await self._run_llm_analysis(full_prompt, use_client=self.client2)
 
+    async def meta_call(self, description: str, client=None) -> "MetaResult":
+        """Single LLM call that classifies the case AND checks vagueness."""
+        meta_prompt = (
+            f"Problem: {description}\n\n"
+            f"Analyze this legal problem and return ONE JSON object:\n"
+            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|consumer_dispute|employment_dispute|family_dispute|criminal|other", '
+            f'"severity": "low|medium|high|urgent", '
+            f'"legal_domain": "Landlord-Tenant|Consumer Protection|Employment|Property|Criminal|Family|Other", '
+            f'"user_role": "landlord|tenant|employer|employee|buyer|seller|complainant|respondent|other", '
+            f'"reasoning": "brief reason", '
+            f'"is_vague": true/false, '
+            f'"clarifying_questions": [{{"question": "...", "key": "..."}}]}}\n'
+            f"Set is_vague: false if the problem mentions who the user is, what happened, or has 20+ words."
+        )
+        text = await self._call_llm(FAST_MODEL, [
+            {"role": "system", "content": self.legal.system_prompt()},
+            {"role": "user", "content": meta_prompt},
+        ], 1200, client=client)
+        try:
+            data = _extract_json(text)
+        except ValueError:
+            data = {}
+        classification = {
+            "case_type": data.get("case_type", "other"),
+            "severity": data.get("severity", "medium"),
+            "legal_domain": data.get("legal_domain", "Other"),
+            "user_role": data.get("user_role", "other"),
+            "reasoning": data.get("reasoning", "Failed"),
+        }
+        return MetaResult(
+            classification=classification,
+            is_vague=bool(data.get("is_vague", False)),
+            clarifying_questions=data.get("clarifying_questions", []) or [],
+        )
+
+    async def _rewrite_query(self, description: str, client=None) -> str:
+        """Improve the RAG search query. Runs in parallel with meta_call."""
+        try:
+            search_text = await self._call_llm(FAST_MODEL, [
+                {"role": "system", "content": self.legal.system_prompt()},
+                {"role": "user", "content": f"Given this legal case: {description}\n\nReturn ONLY a JSON: {{\"query\": \"search terms for Indian law\"}}"},
+            ], 500, client=client)
+            return _extract_json(search_text).get("query", description)
+        except Exception:
+            return description
+
     async def _run_llm_analysis(self, description: str, use_client=None) -> AnalyzeResponseDTO:
         reasoning_trace = []
         today = datetime.now(timezone.utc).strftime("%d %B %Y")
@@ -244,48 +298,15 @@ class AgentService:
         logger.info(f"Starting analysis: {len(description)} chars, model={FAST_MODEL}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 1: Classify + Vagueness check (parallel, fast model)
+        # STAGE 1 (parallel): classify+vagueness (meta_call) + query rewrite
         # ═══════════════════════════════════════════════════════════════════
-        classify_prompt = (
-            f"Problem: {description}\n\n"
-            f"Classify this legal problem into a JSON object:\n"
-            f'{{"case_type": "tenancy_dispute|property_ownership|property_registration|consumer_dispute|employment_dispute|family_dispute|criminal|other", '
-            f'"severity": "low|medium|high|urgent", '
-            f'"legal_domain": "Landlord-Tenant|Consumer Protection|Employment|Property|Criminal|Family|Other", '
-            f'"user_role": "landlord|tenant|employer|employee|buyer|seller|complainant|respondent|other", '
-            f'"reasoning": "brief reason"}}'
+        meta_result, rewritten_query = await asyncio.gather(
+            self.meta_call(description, client),
+            self._rewrite_query(description, client),
         )
-        vague_prompt = (
-            f"Problem: {description}\n\n"
-            f"Is this too vague for legal advice? Return JSON:\n"
-            f'{{"is_vague": true/false, "clarifying_questions": [{{"question": "...", "key": "..."}}]}}\n'
-            f"Return is_vague: false if it mentions who the user is, what happened, or has 20+ words."
-        )
-
-        # Run classify and vagueness in parallel
-        classify_task = self._call_llm(FAST_MODEL, [
-            {"role": "system", "content": self.legal.system_prompt()},
-            {"role": "user", "content": classify_prompt},
-        ], 1000, client=client)
-        vague_task = self._call_llm(FAST_MODEL, [
-            {"role": "system", "content": self.legal.system_prompt()},
-            {"role": "user", "content": vague_prompt},
-        ], 1000, client=client)
-
-        classify_text, vague_text = await asyncio.gather(classify_task, vague_task)
-
-        try:
-            classification = _extract_json(classify_text)
-        except ValueError:
-            classification = {"case_type": "other", "severity": "medium", "legal_domain": "Other", "user_role": "other", "reasoning": "Failed"}
-
-        try:
-            vague_result = _extract_json(vague_text)
-        except ValueError:
-            vague_result = {"is_vague": False, "clarifying_questions": []}
-
-        is_vague = vague_result.get("is_vague", False)
-        vague_questions = vague_result.get("clarifying_questions", [])
+        classification = meta_result.classification
+        is_vague = meta_result.is_vague
+        vague_questions = meta_result.clarifying_questions
         logger.info(f"Classification: type={classification.get('case_type')}, role={classification.get('user_role')}, vague={is_vague}")
         reasoning_trace.append(f"[classify] {classification.get('case_type')} / {classification.get('user_role')}")
 
@@ -301,27 +322,17 @@ class AgentService:
             )
 
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 2: Search RAG for relevant laws
+        # STAGE 2: RAG search with the rewritten query (rewrite ran in parallel)
         # ═══════════════════════════════════════════════════════════════════
-        query = description  # default: use raw description
         try:
-            search_text = await self._call_llm(FAST_MODEL, [
-                {"role": "system", "content": self.legal.system_prompt()},
-                {"role": "user", "content": f"Given this legal case: {description}\n\nReturn ONLY a JSON: {{\"query\": \"search terms for Indian law\"}}"},
-            ], 500, client=client)
-            query = _extract_json(search_text).get("query", description)
-        except ValueError:
-            pass
-
-        try:
-            law_sections = await self.rag.search(query=query, top_k=5)
+            law_sections = await self.rag.search(query=rewritten_query, top_k=5)
         except Exception as e:
             logger.warning(f"RAG search failed: {e}")
             reasoning_trace.append(f"[rag] error: {e}")
             law_sections = []
 
-        logger.info(f"RAG search: query='{query[:50]}...' -> {len(law_sections)} results")
-        reasoning_trace.append(f"[rag] query='{query}' -> {len(law_sections)} results")
+        logger.info(f"RAG search: query='{rewritten_query[:50]}...' -> {len(law_sections)} results")
+        reasoning_trace.append(f"[rag] query='{rewritten_query}' -> {len(law_sections)} results")
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 3: Generate all parts in PARALLEL (small individual calls)
@@ -437,7 +448,7 @@ class AgentService:
         notice_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": notice_prompt},
-        ], 4000, client=client)
+        ], 3000, client=client)
 
         evidence_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
@@ -447,7 +458,7 @@ class AgentService:
         docs_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
             {"role": "user", "content": docs_prompt},
-        ], 6000, client=client)
+        ], 4000, client=client)
 
         plan_task = self._call_llm(FAST_MODEL, [
             {"role": "system", "content": self.legal.system_prompt()},
