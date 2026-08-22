@@ -95,6 +95,100 @@
 
     #doc-content { background: #FFFEFB; }
 
+
+    /* Results are a presentation deck: one consistent viewport, one navigation rail. */
+    .deck-shell { margin-top: 0.5rem; }
+    .deck-viewport {
+      position: relative;
+      min-height: 610px;
+    }
+    .deck-card {
+      display: none;
+      min-height: 610px;
+      background: #fff;
+      border: 1px solid var(--rule);
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      box-shadow: 0 1px 2px rgba(21,41,63,0.03);
+      animation: deck-in 0.22s ease-out;
+    }
+    .deck-card.active { display: flex; flex-direction: column; }
+    .deck-card-inner { flex: 1; min-height: 0; }
+    .deck-scroll {
+      max-height: 500px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+    .deck-nav {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .deck-nav .next-wrap { justify-self: end; }
+    .deck-nav button { min-width: 96px; }
+    .deck-counter {
+      min-width: 90px;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .deck-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    .deck-heading h2 {
+      margin-top: 0.15rem;
+      font-family: 'Source Serif 4', serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--navy-deep);
+    }
+    .deck-kicker {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--navy);
+    }
+    .deck-start {
+      white-space: nowrap;
+      background: var(--paper-2);
+      border: 1px solid var(--rule);
+      color: var(--navy-deep);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.4rem 0.7rem;
+      border-radius: 0.5rem;
+    }
+    .deck-start:hover { background: var(--rule); }
+    .option-card {
+      border: 1px solid var(--rule);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      background: #fff;
+    }
+    .option-card + .option-card { margin-top: 0.75rem; }
+    .option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+    @media (max-width: 640px) {
+      .deck-card, .deck-viewport { min-height: 680px; }
+      .deck-scroll { max-height: 570px; }
+      .option-grid { grid-template-columns: 1fr; }
+      .deck-heading { align-items: flex-start; }
+      .deck-nav button { min-width: 82px; }
+    }
+    @keyframes deck-in {
+      from { opacity: 0; transform: translateX(8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
     ::selection { background: var(--gold); color: var(--navy-deep); }
   </style>
 </head>
@@ -125,7 +219,6 @@
         <button onclick="fillScenario(1)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Landlord deposit</button>
         <button onclick="fillScenario(2)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Lease termination</button>
         <button onclick="fillScenario(3)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Property damage</button>
-        <button onclick="fillScenario('demo')" class="text-xs bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white px-3 py-1.5 rounded-full transition-colors">Try a sample case</button>
       </div>
       <div class="flex gap-2 mt-4">
         <button id="improve-btn" onclick="improvePrompt()" class="flex-1 bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--rule)]">
@@ -175,159 +268,260 @@
       </div>
     </div>
 
-    <!-- Results -->
-    <div id="results-section" class="hidden space-y-6">
-      <!-- AI Message -->
-      <div id="ai-message-section" class="bg-[var(--navy)]/5 border border-[var(--navy)]/15 rounded-xl p-5 slide-up">
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 rounded-full bg-[var(--navy)] text-white flex items-center justify-center text-xs font-mono font-bold flex-shrink-0">AI</div>
-          <p id="result-ai-message" class="text-sm text-[var(--navy-deep)] leading-relaxed"></p>
-        </div>
-      </div>
+    <!-- Results Deck -->
+    <section id="results-section" class="hidden deck-shell">
+      <div class="deck-viewport">
 
-      <!-- Law Coverage Warning -->
-      <div id="coverage-warning" class="hidden bg-[var(--paper-2)] border border-[var(--gold)]/40 rounded-xl p-4 slide-up">
-        <p id="coverage-text" class="text-sm text-[var(--navy-deep)]"></p>
-      </div>
-
-      <!-- Case Type & Severity -->
-      <div class="card p-6 slide-up case-rail">
-        <div class="flex flex-wrap gap-6 items-start justify-between">
-          <div>
-            <h3 class="eyebrow">Case Type</h3>
-            <p id="result-case-type" class="text-lg font-display font-semibold text-[var(--navy-deep)] mt-1 capitalize"></p>
-          </div>
-          <div>
-            <h3 class="eyebrow">Legal Domain</h3>
-            <p id="result-legal-domain" class="text-lg font-display font-semibold text-[var(--navy-deep)] mt-1"></p>
-          </div>
-          <div>
-            <h3 class="eyebrow">Severity</h3>
-            <p id="result-severity" class="mt-1"></p>
-          </div>
-        </div>
-        <div class="mt-4 pt-4 border-t border-[var(--rule)]">
-          <h3 class="eyebrow">AI Summary</h3>
-          <p id="result-summary" class="text-sm text-[var(--ink)] mt-1.5 leading-relaxed"></p>
-        </div>
-      </div>
-
-      <!-- Legal Grounding -->
-      <div id="law-sections-section" class="card p-6 slide-up">
-        <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)] mb-3">Legal Grounding <span class="text-xs text-[var(--muted)] font-sans font-normal">(from database law chunks)</span></h3>
-        <div id="law-sections-list" class="space-y-3"></div>
-        <div id="no-law-sections-msg" class="hidden text-sm text-[var(--muted)] italic">No specific law sections matched above the relevance threshold. More detailed information may be needed.</div>
-      </div>
-
-      <!-- Case Readiness Assessment -->
-      <div class="card p-6 slide-up">
-        <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)] mb-4">Case Readiness Assessment</h3>
-        <div class="flex items-center gap-4 mb-4">
-          <div class="flex-shrink-0">
-            <div class="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-display font-bold" id="readiness-circle"></div>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-[var(--navy-deep)]">Case Readiness Score</p>
-            <p class="text-xs text-[var(--muted)] mt-1">Check evidence items you have to increase your score</p>
-            <div class="flex items-center gap-2 mt-1.5">
-              <div class="w-32 h-2 bg-[var(--paper-2)] rounded-full overflow-hidden">
-                <div id="readiness-bar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+        <!-- Deck 1: Overview -->
+        <article id="deck-0" class="deck-card active">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 01 · Case Overview</div>
+                <h2>AI Case Assessment</h2>
               </div>
-              <span id="adjusted-score-display" class="text-sm font-mono font-bold text-[var(--navy)]">0</span>
-              <span class="text-xs text-[var(--muted)]">/ 100</span>
+                <div class="flex gap-2">
+                  <button class="deck-start" onclick="startNewCase()">Start New</button>
+                  <button class="deck-start" onclick="runSample()">Run Sample</button>
+                </div>
+            </div>
+
+            <div class="deck-scroll space-y-4">
+              <div id="ai-message-section" class="bg-[var(--navy)]/5 border border-[var(--navy)]/15 rounded-xl p-5 slide-up">
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-full bg-[var(--navy)] text-white flex items-center justify-center text-xs font-mono font-bold flex-shrink-0">AI</div>
+                  <p id="result-ai-message" class="text-sm text-[var(--navy-deep)] leading-relaxed"></p>
+                </div>
+              </div>
+
+              <div id="coverage-warning" class="hidden bg-[var(--paper-2)] border border-[var(--gold)]/40 rounded-xl p-4 slide-up">
+                <p id="coverage-text" class="text-sm text-[var(--navy-deep)]"></p>
+              </div>
+
+              <div class="card p-6 slide-up case-rail">
+                <div class="flex flex-wrap gap-6 items-start justify-between">
+                  <div>
+                    <h3 class="eyebrow">Case Type</h3>
+                    <p id="result-case-type" class="text-lg font-display font-semibold text-[var(--navy-deep)] mt-1 capitalize"></p>
+                  </div>
+                  <div>
+                    <h3 class="eyebrow">Legal Domain</h3>
+                    <p id="result-legal-domain" class="text-lg font-display font-semibold text-[var(--navy-deep)] mt-1"></p>
+                  </div>
+                  <div>
+                    <h3 class="eyebrow">Severity</h3>
+                    <p id="result-severity" class="mt-1"></p>
+                  </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-[var(--rule)]">
+                  <h3 class="eyebrow">AI Summary</h3>
+                  <p id="result-summary" class="text-sm text-[var(--ink)] mt-1.5 leading-relaxed"></p>
+                </div>
+              </div>
+
+             
             </div>
           </div>
-          <div class="ml-auto">
-            <span id="risk-badge" class="inline-block px-3 py-1 rounded-full text-sm font-medium"></span>
-          </div>
-        </div>
+        </article>
 
-        <!-- Evidence Checklist -->
-        <div class="mt-4 pt-4 border-t border-[var(--rule)]">
-          <h4 class="text-sm font-semibold text-[var(--navy-deep)] mb-2">Required Evidence</h4>
-          <p class="text-xs text-[var(--muted)] mb-3">Check what you already have. Unchecked items = still needed. Documents will update based on your evidence.</p>
-          <div id="evidence-checklist" class="space-y-1"></div>
-
-          <!-- Confirmed evidence display -->
-          <div id="confirmed-evidence-section" class="hidden mt-3 pt-3 border-t border-[var(--rule)]">
-            <h4 class="text-xs font-semibold text-[#5C8A6A] mb-1">&#10003; Confirmed Evidence</h4>
-            <div id="evidence-available-list" class="space-y-0.5"></div>
+        <!-- Deck 2: Legal Grounding -->
+        <article id="deck-1" class="deck-card">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 02 · Legal Grounding</div>
+                <h2>Grounded Legal Analysis</h2>
+              </div>
+            </div>
+            <div class="deck-scroll">
+              <div class="card p-6 slide-up">
+                <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)] mb-3">
+                  Legal Grounding
+                  <span class="text-xs text-[var(--muted)] font-sans font-normal">(from database law chunks)</span>
+                </h3>
+                <div id="law-sections-list" class="space-y-3"></div>
+                <div id="no-law-sections-msg" class="hidden text-sm text-[var(--muted)] italic">
+                  No specific law sections matched above the relevance threshold. More detailed information may be needed.
+                </div>
+              </div>
+            </div>
           </div>
+        </article>
 
-          <!-- Suggestions -->
-          <div id="suggestions-section" class="hidden mt-4 pt-3 border-t border-dashed border-[var(--rule)]">
-            <h4 class="text-sm font-semibold text-[var(--navy-deep)] mb-2">&#128161; Additional Actions to Boost Score</h4>
-            <p class="text-xs text-[var(--muted)] mb-2">Completing these can push your readiness toward 80+</p>
-            <div id="suggestions-checklist" class="space-y-1"></div>
-          </div>
+        <!-- Deck 3: Readiness -->
+        <article id="deck-2" class="deck-card">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 03 · Case Readiness</div>
+                <h2>Case Readiness Assessment</h2>
+              </div>
+            </div>
 
-          <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
-            <span class="text-[var(--muted)] font-mono">
-              <span id="checked-count" class="font-semibold text-[var(--navy)]">0</span>/<span id="total-evidence-count" class="font-semibold">0</span> evidence
-            </span>
-            <span class="text-[var(--rule)]">|</span>
-            <span class="text-[var(--muted)] font-mono">
-              <span id="suggestion-checked-count" class="font-semibold text-[var(--gold)]">0</span>/<span id="total-suggestion-count" class="font-semibold">0</span> actions
-            </span>
-            <span class="flex-1"></span>
-            <button id="submit-evidence-btn" onclick="submitEvidence()" class="bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              Update Score &amp; Documents
-            </button>
+            <div class="deck-scroll">
+              <div class="card p-6 slide-up">
+                <div class="flex items-center gap-4 mb-4">
+                  <div class="flex-shrink-0">
+                    <div class="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-display font-bold" id="readiness-circle"></div>
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-[var(--navy-deep)]">Case Readiness Score</p>
+                    <p class="text-xs text-[var(--muted)] mt-1">Your current evidence against the target readiness level.</p>
+                    <div class="flex items-center gap-2 mt-1.5">
+                      <div class="w-32 h-2 bg-[var(--paper-2)] rounded-full overflow-hidden">
+                        <div id="readiness-bar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                      </div>
+                      <span id="adjusted-score-display" class="text-sm font-mono font-bold text-[var(--navy)]">0</span>
+                      <span class="text-xs text-[var(--muted)]">/ 100</span>
+                    </div>
+                  </div>
+                  <div class="ml-auto">
+                    <span id="risk-badge" class="inline-block px-3 py-1 rounded-full text-sm font-medium"></span>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                  <div class="bg-[var(--paper-2)] rounded-lg p-3">
+                    <div class="eyebrow">Current Score</div>
+                    <div id="readiness-current-score" class="font-display text-xl font-semibold text-[var(--navy-deep)] mt-1">0</div>
+                  </div>
+                  <div class="bg-[var(--paper-2)] rounded-lg p-3">
+                    <div class="eyebrow">Required Score</div>
+                    <div id="readiness-required-score" class="font-display text-xl font-semibold text-[var(--navy-deep)] mt-1">80</div>
+                  </div>
+                  <div class="bg-[var(--paper-2)] rounded-lg p-3">
+                    <div class="eyebrow">Additional Needed</div>
+                    <div id="readiness-additional-score" class="font-display text-xl font-semibold text-[var(--navy-deep)] mt-1">0</div>
+                  </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-[var(--rule)]">
+                  <h4 class="text-sm font-semibold text-[var(--navy-deep)] mb-2">Required Evidence</h4>
+                  <p class="text-xs text-[var(--muted)] mb-3">Check what you already have. Unchecked items are still needed.</p>
+                  <div id="evidence-checklist" class="space-y-1"></div>
+
+                  <div id="confirmed-evidence-section" class="hidden mt-3 pt-3 border-t border-[var(--rule)]">
+                    <h4 class="text-xs font-semibold text-[#5C8A6A] mb-1">&#10003; Confirmed Evidence</h4>
+                    <div id="evidence-available-list" class="space-y-0.5"></div>
+                  </div>
+
+                  <div id="suggestions-section" class="hidden mt-4 pt-3 border-t border-dashed border-[var(--rule)]">
+                    <h4 class="text-sm font-semibold text-[var(--navy-deep)] mb-2">&#128161; Additional Actions to Boost Score</h4>
+                    <p class="text-xs text-[var(--muted)] mb-2">Completing these can push your readiness toward the required score.</p>
+                    <div id="suggestions-checklist" class="space-y-1"></div>
+                  </div>
+
+                  <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                    <span class="text-[var(--muted)] font-mono">
+                      <span id="checked-count" class="font-semibold text-[var(--navy)]">0</span>/<span id="total-evidence-count" class="font-semibold">0</span> evidence
+                    </span>
+                    <span class="text-[var(--rule)]">|</span>
+                    <span class="text-[var(--muted)] font-mono">
+                      <span id="suggestion-checked-count" class="font-semibold text-[var(--gold)]">0</span>/<span id="total-suggestion-count" class="font-semibold">0</span> actions
+                    </span>
+                    <span class="flex-1"></span>
+                    <button id="submit-evidence-btn" onclick="submitEvidence()" class="bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      Update Score &amp; Documents
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </article>
+
+        <!-- Deck 4: Action Plan -->
+        <article id="deck-3" class="deck-card">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 04 · Recommended Action Plan</div>
+                <h2>What To Do Next</h2>
+              </div>
+            </div>
+            <div class="deck-scroll">
+              <div class="card p-6 slide-up">
+                <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)] mb-3">Recommended Action Plan</h3>
+                <ol id="action-plan-list" class="space-y-3"></ol>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Deck 5: Legal Options -->
+        <article id="deck-4" class="deck-card">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 05 · Legal Options</div>
+                <h2>Available Legal Options</h2>
+              </div>
+            </div>
+            <div class="deck-scroll">
+              <div class="card p-6 slide-up">
+                <p id="options-comparison-note" class="text-sm text-[var(--muted)] mb-3"></p>
+                <div id="options-panel"></div>
+                <div id="options-empty" class="text-sm text-[var(--muted)] italic">
+                  No distinct legal options were returned for this case.
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Deck 6: Draft Documents -->
+        <article id="deck-5" class="deck-card">
+          <div class="deck-card-inner">
+            <div class="deck-heading">
+              <div>
+                <div class="deck-kicker">Deck 06 · Draft Documents</div>
+                <h2>Draft &amp; Review Documents</h2>
+              </div>
+            </div>
+            <div class="deck-scroll">
+              <div class="card p-6 slide-up">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)]">
+                    Generated Documents
+                    <span class="text-xs text-[var(--muted)] font-sans font-normal">(AI-generated drafts — review before use)</span>
+                  </h3>
+                  <button id="download-all-btn" onclick="downloadAllPdfs()" class="bg-[#5C8A6A] hover:bg-[#4A7156] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Download as PDF
+                  </button>
+                </div>
+
+                <div id="doc-tabs" class="flex gap-1 border-b border-[var(--rule)] mb-4 overflow-x-auto"></div>
+
+                <div id="draft-banner" class="hidden bg-[var(--paper-2)] border border-[var(--gold)]/40 rounded-lg p-3 mb-3 text-xs text-[var(--navy-deep)] flex items-center gap-2">
+                  <span class="seal-stamp text-[10px] font-bold px-1.5 py-0.5 rounded inline-block flex-shrink-0">DRAFT</span>
+                  <span>This is an AI-generated draft. Review with a legal professional before use.</span>
+                </div>
+
+                <div id="doc-panels" class="relative">
+                  <textarea id="doc-content" rows="16" class="w-full border border-[var(--rule)] rounded-lg p-4 text-sm font-mono leading-relaxed focus:ring-0 outline-none transition-colors"></textarea>
+                </div>
+                <p class="text-xs text-[var(--muted)] mt-2">You can edit the document text above before downloading. These are AI-generated drafts and should be reviewed by a legal professional.</p>
+              </div>
+            </div>
+          </div>
+        </article>
       </div>
 
-      <!-- Action Plan -->
-      <div class="card p-6 slide-up">
-        <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)] mb-3">Recommended Action Plan</h3>
-        <ol id="action-plan-list" class="space-y-3"></ol>
-      </div>
-
-      <!-- Legal Options (interoperability) -->
-      <div id="options-panel" class="hidden card p-6 slide-up">
-        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
-          <div>
-            <div class="eyebrow mb-1">Legal Options</div>
-            <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)]">Choose your path</h3>
-          </div>
-          <div class="flex items-center gap-2">
-            <button id="prev-option" onclick="prevOption()" class="bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--rule)] transition-colors">&#8592; Prev</button>
-            <span id="options-counter" class="text-xs font-mono text-[var(--muted)]"></span>
-            <button id="next-option" onclick="nextOption()" class="bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--rule)] transition-colors">Next &#8594;</button>
-          </div>
-        </div>
-        <p id="options-comparison-note" class="text-xs text-[var(--navy)] bg-[var(--navy)]/5 border border-[var(--navy)]/15 rounded-lg p-3 mb-4"></p>
-        <div id="options-content"></div>
-        <div class="mt-4 flex justify-end">
-          <button id="choose-option" onclick="chooseOption()" class="bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white font-medium py-2 px-5 rounded-lg transition-colors">Choose This Option</button>
-        </div>
-      </div>
-
-      <!-- Documents Section -->
-      <div class="card p-6 slide-up">
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)]">Generated Documents <span class="text-xs text-[var(--muted)] font-sans font-normal">(AI-generated drafts — review before use)</span></h3>
-          <button id="download-all-btn" onclick="downloadAllPdfs()" class="bg-[#5C8A6A] hover:bg-[#4A7156] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            Download as PDF
+      <!-- One fixed navigation rail: mouse stays here while moving through the case. -->
+      <div class="deck-nav">
+        <div>
+          <button id="deck-prev" onclick="prevDeck()" class="bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--rule)] disabled:opacity-40 disabled:cursor-not-allowed">
+            &#8592; Previous
           </button>
         </div>
-
-        <!-- Document Tabs -->
-        <div id="doc-tabs" class="flex gap-1 border-b border-[var(--rule)] mb-4 overflow-x-auto"></div>
-
-        <!-- Draft Disclaimer Banner -->
-        <div id="draft-banner" class="hidden bg-[var(--paper-2)] border border-[var(--gold)]/40 rounded-lg p-3 mb-3 text-xs text-[var(--navy-deep)] flex items-center gap-2">
-          <span class="seal-stamp text-[10px] font-bold px-1.5 py-0.5 rounded inline-block flex-shrink-0">DRAFT</span>
-          <span>This is an AI-generated draft. Review with a legal professional before use.</span>
+        <div id="deck-counter" class="deck-counter">1 / 6</div>
+        <div class="next-wrap">
+          <button id="deck-next" onclick="nextDeck()" class="bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white text-sm font-medium px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+            Next &#8594;
+          </button>
         </div>
-
-        <!-- Document Content -->
-        <div id="doc-panels" class="relative">
-          <textarea id="doc-content" rows="16" class="w-full border border-[var(--rule)] rounded-lg p-4 text-sm font-mono leading-relaxed focus:ring-0 outline-none transition-colors"></textarea>
-        </div>
-        <p class="text-xs text-[var(--muted)] mt-2">You can edit the document text above before downloading. These are AI-generated drafts and should be reviewed by a legal professional.</p>
       </div>
-    </div>
+    </section>
 
     <!-- Error -->
     <div id="error-section" class="hidden bg-[var(--seal)]/5 border border-[var(--seal)]/30 rounded-xl p-6 mt-6">
@@ -358,7 +552,6 @@
       1: "My landlord is refusing to return my ₹50,000 security deposit. I vacated the apartment 3 months ago and left it in perfect condition. He claims there was damage but has provided no evidence or photos. I have the original rental agreement and bank transfer records for the deposit payment.",
       2: "My landlord served me an illegal eviction notice claiming I violated the lease by having a pet. I have lived here for 2 years with the pet and the landlord was aware. The lease doesn't mention pets. I need help fighting this wrongful termination of my tenancy.",
       3: "The property I rented has severe water damage from a leaky roof that the landlord refuses to fix. My furniture has been damaged. I've sent multiple emails but he ignores me. I have photos of the damage and email records. I want to force him to make repairs and compensate me.",
-      demo: "Landlord locked me out and won't return my Rs.50,000 deposit after 11 months; no written agreement, only UPI rent proofs.",
     };
 
     let currentData = null;
@@ -370,6 +563,7 @@
     let activeDocIndex = 0;
     let currentEvidenceList = [];
     let currentSuggestionsList = [];
+    let currentOptions = [];
 
     function fillScenario(n) {
       document.getElementById("problem-input").value = scenarios[n] || "";
@@ -527,18 +721,32 @@
       }
     }
 
+    let currentDeckIndex = 0;
+    const REQUIRED_READINESS_SCORE = 80;
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     function displayResults(data) {
       currentData = data;
       evidenceChecked = {};
       suggestionChecked = {};
+      currentDeckIndex = 0;
 
-      // Handle insufficient data
       if (data.is_sufficient === false) {
         document.getElementById("results-section").classList.add("hidden");
+        document.getElementById("step-input").classList.remove("hidden");
         document.getElementById("insufficient-section").classList.remove("hidden");
-        document.getElementById("insufficient-message").textContent = data.ai_message || "Insufficient data to proceed.";
+        document.getElementById("insufficient-message").textContent =
+          data.ai_message || "Insufficient data to proceed.";
         document.getElementById("progress-section").classList.add("hidden");
-        // Show clarifying questions if any
+
         const cqSection = document.getElementById("clarifying-questions-section");
         const cqList = document.getElementById("clarifying-questions-list");
         if (data.clarifying_questions && data.clarifying_questions.length > 0) {
@@ -546,7 +754,7 @@
           data.clarifying_questions.forEach(q => {
             const div = document.createElement("div");
             div.className = "bg-[var(--paper-2)] border border-[var(--gold)]/40 rounded-lg p-3 text-sm text-[var(--navy-deep)]";
-            div.textContent = q.question;
+            div.textContent = typeof q === "string" ? q : (q.question || "");
             cqList.appendChild(div);
           });
           cqSection.classList.remove("hidden");
@@ -556,81 +764,124 @@
         return;
       }
 
+      // The input screen is unrendered while the result deck is shown.
+      document.getElementById("step-input").classList.add("hidden");
       document.getElementById("results-section").classList.remove("hidden");
       document.getElementById("insufficient-section").classList.add("hidden");
       document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("error-section").classList.add("hidden");
+      document.getElementById("loading-update").classList.add("hidden");
 
-      // Law docs banner
-      if (data.law_docs_available && data.law_docs_available.length > 0) {
-        document.getElementById("law-docs-list").textContent = data.law_docs_available.join(", ");
-        document.getElementById("law-docs-banner").classList.remove("hidden");
-      }
+      populateCaseOverview(data);
+      populateLegalGrounding(data);
+      populateReadiness(data);
+      populateActionPlan(data);
+      renderOptions(data.legal_options || data.options || data.legal_paths || [], data.options_comparison_note || data.comparison_note || "");
+      renderDocuments(data);
+      showDeck(0);
+    }
 
-      // AI Message
+    function populateCaseOverview(data) {
       document.getElementById("result-ai-message").textContent = data.ai_message || "Analysis complete.";
-
-      // Coverage warning
-      const cw = document.getElementById("coverage-warning");
-      const ct = document.getElementById("coverage-text");
-      if (data.law_docs_coverage && (data.law_docs_coverage.includes("[!]") || data.law_docs_coverage.includes("Limited"))) {
-        cw.classList.remove("hidden");
-        ct.textContent = data.law_docs_coverage;
-      } else {
-        cw.classList.add("hidden");
-      }
-
-      // Case type
       document.getElementById("result-case-type").textContent = (data.case_type || "other").replace(/_/g, " ");
       document.getElementById("result-legal-domain").textContent = data.legal_domain || "Civil";
 
       const sev = document.getElementById("result-severity");
       const sv = data.severity || "medium";
-      const sevColors = { low: "bg-[#5C8A6A]/10 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-orange-100 text-orange-700", urgent: "bg-[var(--seal)]/10 text-[var(--seal)]" };
-      sev.className = "mt-1 inline-block px-3 py-1 rounded-full text-sm font-medium " + (sevColors[sv] || "bg-gray-100 text-gray-700");
+      const sevColors = {
+        low: "bg-[#5C8A6A]/10 text-[#4A7156]",
+        medium: "bg-[var(--gold)]/15 text-[#8C6D1F]",
+        high: "bg-orange-100 text-orange-700",
+        urgent: "bg-[var(--seal)]/10 text-[var(--seal)]"
+      };
+      sev.className = "mt-1 inline-block px-3 py-1 rounded-full text-sm font-medium " +
+        (sevColors[sv] || "bg-gray-100 text-gray-700");
       sev.textContent = sv.charAt(0).toUpperCase() + sv.slice(1);
 
-      document.getElementById("result-summary").textContent = data.summary || "No summary available.";
+      document.getElementById("result-summary").textContent =
+        data.summary || "No summary available.";
 
-      // Law sections
-      const lawContainer = document.getElementById("law-sections-list");
-      lawContainer.innerHTML = "";
-      const sections = data.relevant_sections || [];
-      const noLawMsg = document.getElementById("no-law-sections-msg");
-      if (sections.length === 0) {
-        document.getElementById("law-sections-section").classList.remove("hidden");
-        noLawMsg.classList.remove("hidden");
+      const lawBanner = document.getElementById("law-docs-inline") || document.getElementById("law-docs-banner");
+      if (data.law_docs_available && data.law_docs_available.length > 0) {
+        document.getElementById("law-docs-list").textContent = data.law_docs_available.join(", ");
+        if (lawBanner) lawBanner.classList.remove("hidden");
       } else {
-        noLawMsg.classList.add("hidden");
-        sections.forEach(s => {
-          const pct = Math.round((s.score || 0) * 100);
-          lawContainer.innerHTML += `
-            <div class="border border-[var(--rule)] rounded-lg p-4 hover:bg-[var(--paper-2)]/50 transition-colors">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="font-display font-semibold text-sm text-[var(--navy-deep)]">${s.act || ""} — Section ${s.section_number || s.section || ""}</p>
-                  <p class="text-sm text-[var(--ink)]/80 mt-0.5">${s.section_title || s.title || ""}</p>
-                </div>
-                <span class="text-xs font-mono font-medium text-[var(--navy)] bg-[var(--navy)]/8 px-2 py-1 rounded flex-shrink-0">${pct}% match</span>
-              </div>
-              ${s.excerpt ? `<p class="text-xs text-[var(--muted)] mt-2 line-clamp-2">${s.excerpt.substring(0, 200)}</p>` : ""}
-            </div>
-          `;
-        });
+        if (lawBanner) lawBanner.classList.add("hidden");
       }
 
-      // Readiness score
-      baseScore = data.case_readiness_score || 0;
+      const cw = document.getElementById("coverage-warning");
+      const ct = document.getElementById("coverage-text");
+      if (data.law_docs_coverage &&
+          (data.law_docs_coverage.includes("[!]") || data.law_docs_coverage.includes("Limited"))) {
+        cw.classList.remove("hidden");
+        ct.textContent = data.law_docs_coverage;
+      } else {
+        cw.classList.add("hidden");
+      }
+    }
+
+    function populateLegalGrounding(data) {
+      const lawContainer = document.getElementById("law-sections-list");
+      const noLawMsg = document.getElementById("no-law-sections-msg");
+      lawContainer.innerHTML = "";
+
+      const sections = Array.isArray(data.relevant_sections) ? data.relevant_sections : [];
+      if (sections.length === 0) {
+        noLawMsg.classList.remove("hidden");
+        return;
+      }
+
+      noLawMsg.classList.add("hidden");
+      sections.forEach(s => {
+        const pct = Math.round((Number(s.score) || 0) * 100);
+        const el = document.createElement("div");
+        el.className = "border border-[var(--rule)] rounded-lg p-4 hover:bg-[var(--paper-2)]/50 transition-colors";
+        el.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-display font-semibold text-sm text-[var(--navy-deep)]">
+                ${esc(s.act || "")} — Section ${esc(s.section_number || s.section || "")}
+              </p>
+              <p class="text-sm text-[var(--ink)]/80 mt-0.5">${esc(s.section_title || s.title || "")}</p>
+            </div>
+            <span class="text-xs font-mono font-medium text-[var(--navy)] bg-[var(--navy)]/8 px-2 py-1 rounded flex-shrink-0">
+              ${pct}% match
+            </span>
+          </div>
+          ${s.excerpt ? `<p class="text-xs text-[var(--muted)] mt-2">${esc(String(s.excerpt).substring(0, 280))}</p>` : ""}
+        `;
+        lawContainer.appendChild(el);
+      });
+    }
+
+    function populateReadiness(data) {
+      baseScore = Number(data.case_readiness_score) || 0;
       updateReadiness(baseScore);
 
-      // Risk badge
+      const required = Number(
+        data.required_readiness_score ||
+        data.readiness_required_score ||
+        data.required_score ||
+        REQUIRED_READINESS_SCORE
+      );
+      const additional = Math.max(0, required - baseScore);
+
+      document.getElementById("readiness-current-score").textContent = Math.round(baseScore);
+      document.getElementById("readiness-required-score").textContent = Math.round(required);
+      document.getElementById("readiness-additional-score").textContent = Math.round(additional);
+
       const risk = data.risk_level || "medium";
       const riskBadge = document.getElementById("risk-badge");
-      const riskColors = { low: "bg-[#5C8A6A]/10 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-[var(--seal)]/10 text-[var(--seal)]" };
-      riskBadge.className = "inline-block px-3 py-1 rounded-full text-sm font-medium " + (riskColors[risk] || "bg-gray-100 text-gray-700");
+      const riskColors = {
+        low: "bg-[#5C8A6A]/10 text-[#4A7156]",
+        medium: "bg-[var(--gold)]/15 text-[#8C6D1F]",
+        high: "bg-[var(--seal)]/10 text-[var(--seal)]"
+      };
+      riskBadge.className = "inline-block px-3 py-1 rounded-full text-sm font-medium " +
+        (riskColors[risk] || "bg-gray-100 text-gray-700");
       riskBadge.textContent = "Risk: " + risk.charAt(0).toUpperCase() + risk.slice(1);
 
-      // Evidence checklist
-      const evidenceItems = data.evidence_missing || [];
+      const evidenceItems = Array.isArray(data.evidence_missing) ? data.evidence_missing : [];
       currentEvidenceList = [...evidenceItems];
       const checklist = document.getElementById("evidence-checklist");
       checklist.innerHTML = "";
@@ -646,16 +897,16 @@
           const div = document.createElement("div");
           div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-[var(--paper-2)]/60 transition-colors";
           div.innerHTML = `
-            <input type="checkbox" id="${key}" class="evidence-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0"
-              onchange="onEvidenceChange()">
-            <label for="${key}" class="evidence-label text-sm text-[var(--ink)] cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
+            <input type="checkbox" id="${key}" class="evidence-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0" onchange="onEvidenceChange()">
+            <label for="${key}" class="evidence-label text-sm text-[var(--ink)] cursor-pointer select-none flex-1">
+              <span class="ev-text">${esc(item)}</span>
+            </label>
           `;
           checklist.appendChild(div);
         });
       }
 
-      // Suggestions
-      const suggestions = data.evidence_suggestions || [];
+      const suggestions = Array.isArray(data.evidence_suggestions) ? data.evidence_suggestions : [];
       currentSuggestionsList = [...suggestions];
       const sugSection = document.getElementById("suggestions-section");
       const sugList = document.getElementById("suggestions-checklist");
@@ -671,9 +922,10 @@
           const div = document.createElement("div");
           div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-[var(--gold)]/10 transition-colors";
           div.innerHTML = `
-            <input type="checkbox" id="${key}" class="suggestion-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0"
-              onchange="onEvidenceChange()">
-            <label for="${key}" class="suggestion-label text-sm text-[var(--ink)]/80 cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
+            <input type="checkbox" id="${key}" class="suggestion-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0" onchange="onEvidenceChange()">
+            <label for="${key}" class="suggestion-label text-sm text-[var(--ink)]/80 cursor-pointer select-none flex-1">
+              <span class="ev-text">${esc(item)}</span>
+            </label>
           `;
           sugList.appendChild(div);
         });
@@ -681,43 +933,180 @@
         sugSection.classList.add("hidden");
       }
 
-      document.getElementById("checked-count").textContent = "0";
-      document.getElementById("suggestion-checked-count").textContent = "0";
-
-      // Action plan
-      const planList = document.getElementById("action-plan-list");
-      planList.innerHTML = "";
-      const steps = data.next_steps || [];
-      if (steps.length > 0) {
-        steps.forEach((s, i) => {
-          const text = typeof s === "string" ? s : (s.text || "");
-          const li = document.createElement("li");
-          li.className = "flex items-start gap-3 text-sm text-[var(--ink)]";
-          li.innerHTML = `
-            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">${i + 1}</span>
-            <span class="leading-relaxed pt-0.5">${text}</span>
-          `;
-          planList.appendChild(li);
+      const confirmed = Array.isArray(data.evidence_available) ? data.evidence_available : [];
+      const confirmedSection = document.getElementById("confirmed-evidence-section");
+      const confirmedList = document.getElementById("evidence-available-list");
+      confirmedList.innerHTML = "";
+      if (confirmed.length) {
+        confirmedSection.classList.remove("hidden");
+        confirmed.forEach(item => {
+          const div = document.createElement("div");
+          div.className = "text-sm text-[#4A7156]";
+          div.innerHTML = '<span class="text-[#5C8A6A] mr-1">&#10003;</span>' + esc(item);
+          confirmedList.appendChild(div);
         });
       } else {
-        const recActions = data.recommended_actions || [];
-        if (recActions.length > 0) {
-          recActions.forEach((a, i) => {
-            const li = document.createElement("li");
-            li.className = "flex items-start gap-3 text-sm text-[var(--ink)]";
-            li.innerHTML = '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">' + (i + 1) + '</span><span class="leading-relaxed pt-0.5">' + a + '</span>';
-            planList.appendChild(li);
-          });
-        } else {
-          planList.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No action steps generated.</p>';
-        }
+        confirmedSection.classList.add("hidden");
       }
 
-      renderDocuments(data);
-
-      // Legal options (interoperability)
-      renderOptions(data.legal_options || [], data.option_comparison_note || "");
+      document.getElementById("checked-count").textContent = "0";
+      document.getElementById("suggestion-checked-count").textContent = "0";
     }
+
+    function populateActionPlan(data) {
+      const planList = document.getElementById("action-plan-list");
+      planList.innerHTML = "";
+      const steps = Array.isArray(data.next_steps) ? data.next_steps :
+                    (Array.isArray(data.recommended_actions) ? data.recommended_actions : []);
+
+      if (!steps.length) {
+        planList.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No action steps generated.</p>';
+        return;
+      }
+
+      steps.forEach((s, i) => {
+        const text = typeof s === "string" ? s : (s.text || s.action || "");
+        const li = document.createElement("li");
+        li.className = "flex items-start gap-3 text-sm text-[var(--ink)]";
+        li.innerHTML = `
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">${i + 1}</span>
+          <span class="leading-relaxed pt-0.5">${esc(text)}</span>
+        `;
+        planList.appendChild(li);
+      });
+    }
+
+    function renderOptions(options, comparisonNote) {
+      const panel = document.getElementById("options-panel");
+      const empty = document.getElementById("options-empty");
+      const noteEl = document.getElementById("options-comparison-note");
+
+      currentOptions = Array.isArray(options) ? options.slice() : [];
+      noteEl.textContent = comparisonNote || "";
+
+      if (!currentOptions.length) {
+        panel.innerHTML = "";
+        empty.classList.remove("hidden");
+        return;
+      }
+
+      empty.classList.add("hidden");
+      currentOptions.sort((a, b) => (b.recommended === true) - (a.recommended === true));
+
+      panel.innerHTML = currentOptions.map((opt, idx) => {
+        const success = Math.max(0, Math.min(100, parseInt(opt.success_likelihood) || 0));
+        const successColor = success >= 70 ? "bg-[#5C8A6A]" : success >= 40 ? "bg-[var(--gold)]" : "bg-[var(--seal)]";
+        const effortColor = ({Low:"bg-[#5C8A6A]/15 text-[#4A7156]",Medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",High:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.effort] || "bg-gray-100 text-gray-700";
+        const riskColor = ({low:"bg-[#5C8A6A]/15 text-[#4A7156]",medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",high:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.risk_level] || "bg-gray-100 text-gray-700";
+
+        const pros = (opt.pros || []).map(x => `<li class="text-sm text-[var(--ink)]">${esc(x)}</li>`).join("");
+        const cons = (opt.cons || []).map(x => `<li class="text-sm text-[var(--ink)]">${esc(x)}</li>`).join("");
+        const steps = (opt.next_steps || []).map((x, i) =>
+          `<li class="flex items-start gap-2 text-sm"><span class="w-5 h-5 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-[10px] font-mono flex-shrink-0">${i+1}</span><span>${esc(typeof x === "string" ? x : (x.text || ""))}</span></li>`
+        ).join("");
+
+        return `
+          <div class="option-card">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h4 class="text-base font-display font-semibold text-[var(--navy-deep)]">
+                  ${esc(opt.name || "Legal Option")}
+                  ${opt.recommended ? '<span class="inline-block ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold text-white bg-[#5C8A6A]">RECOMMENDED</span>' : ""}
+                </h4>
+                ${opt.tagline ? `<p class="text-sm text-[var(--muted)] mt-1">${esc(opt.tagline)}</p>` : ""}
+              </div>
+            </div>
+
+            <div class="option-grid mt-3">
+              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+                <div class="eyebrow">Success likelihood</div>
+                <div class="flex items-center gap-2 mt-1">
+                  <div class="h-2 bg-[var(--rule)] rounded-full flex-1 overflow-hidden"><div class="h-full ${successColor}" style="width:${success}%"></div></div>
+                  <span class="text-xs font-mono">${success}%</span>
+                </div>
+              </div>
+              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+                <div class="eyebrow">Effort</div>
+                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${effortColor}">${esc(opt.effort || "—")}</span>
+              </div>
+              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+                <div class="eyebrow">Risk</div>
+                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${riskColor}">${esc(opt.risk_level || "—")}</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div>
+                <h5 class="text-xs font-semibold uppercase tracking-wide text-[#4A7156] mb-1">Pros</h5>
+                <ul class="space-y-1">${pros || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
+              </div>
+              <div>
+                <h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--seal)] mb-1">Cons</h5>
+                <ul class="space-y-1">${cons || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
+              </div>
+            </div>
+
+            ${opt.best_for ? `<p class="text-sm mt-3"><span class="text-[var(--navy)] font-semibold">Best for:</span> <span class="text-[var(--navy-deep)]">${esc(opt.best_for)}</span></p>` : ""}
+            ${opt.interoperability_note ? `<p class="text-sm mt-2 text-[#6B4E9E]"><span class="font-semibold">Note:</span> ${esc(opt.interoperability_note)}</p>` : ""}
+
+            ${steps ? `<div class="mt-4"><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--navy)] mb-2">Next Steps</h5><ol class="space-y-2">${steps}</ol></div>` : ""}
+            ${opt.applicable_documents && opt.applicable_documents.length ? `<p class="text-xs text-[var(--muted)] mt-2">Documents: ${opt.applicable_documents.map(esc).join(", ")}</p>` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+
+    function showDeck(index) {
+      const total = 6;
+      currentDeckIndex = Math.max(0, Math.min(total - 1, index));
+
+      document.querySelectorAll(".deck-card").forEach((card, i) => {
+        card.classList.toggle("active", i === currentDeckIndex);
+      });
+
+      document.getElementById("deck-counter").textContent =
+        (currentDeckIndex + 1) + " / " + total;
+
+      document.getElementById("deck-prev").disabled = currentDeckIndex === 0;
+      document.getElementById("deck-next").disabled = currentDeckIndex === total - 1;
+    }
+
+    function nextDeck() {
+      if (currentDeckIndex < 5) showDeck(currentDeckIndex + 1);
+    }
+
+    function prevDeck() {
+      if (currentDeckIndex > 0) showDeck(currentDeckIndex - 1);
+    }
+
+    function startNewCase() {
+      currentData = null;
+      currentDeckIndex = 0;
+      currentDocs = [];
+      activeDocIndex = 0;
+      evidenceChecked = {};
+      suggestionChecked = {};
+      currentEvidenceList = [];
+      currentSuggestionsList = [];
+
+      document.getElementById("results-section").classList.add("hidden");
+      document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("insufficient-section").classList.add("hidden");
+      document.getElementById("error-section").classList.add("hidden");
+      document.getElementById("loading-update").classList.add("hidden");
+      const lawBannerEl = document.getElementById("law-docs-inline") || document.getElementById("law-docs-banner");
+      if (lawBannerEl) lawBannerEl.classList.add("hidden");
+      document.getElementById("problem-input").value = "";
+      document.getElementById("step-input").classList.remove("hidden");
+      document.getElementById("problem-input").focus();
+    }
+
+    document.addEventListener("keydown", function(e) {
+      if (document.getElementById("results-section").classList.contains("hidden")) return;
+      if (e.target && ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+      if (e.key === "ArrowRight") nextDeck();
+      if (e.key === "ArrowLeft") prevDeck();
+    });
 
     function updateReadiness(score) {
       const circle = document.getElementById("readiness-circle");
@@ -752,43 +1141,35 @@
       btn.disabled = true;
       btn.textContent = "Updating...";
 
-      document.getElementById("results-section").classList.add("hidden");
-      document.getElementById("loading-update").classList.remove("hidden");
+      const previousDeck = currentDeckIndex;
 
       try {
         await ensureBackendAwake();
       } catch (e) {
         alert("Error: " + e.message + " Please check if the backend is running.");
-        document.getElementById("loading-update").classList.add("hidden");
-        document.getElementById("results-section").classList.remove("hidden");
         btn.disabled = false;
         btn.textContent = "Update Score & Documents";
         return;
       }
 
-      const evKeys = Object.keys(evidenceChecked);
-      const sugKeys = Object.keys(suggestionChecked);
-
-      const evAvailable = evKeys.filter(k => evidenceChecked[k]).map(k => {
+      const evAvailable = Object.keys(evidenceChecked).filter(k => evidenceChecked[k]).map(k => {
         const idx = parseInt(k.replace("ev_", ""));
         return currentEvidenceList[idx];
       }).filter(Boolean);
 
-      const evMissing = evKeys.filter(k => !evidenceChecked[k]).map(k => {
+      const evMissing = Object.keys(evidenceChecked).filter(k => !evidenceChecked[k]).map(k => {
         const idx = parseInt(k.replace("ev_", ""));
         return currentEvidenceList[idx];
       }).filter(Boolean);
 
-      const sugAvailable = sugKeys.filter(k => suggestionChecked[k]).map(k => {
+      const sugAvailable = Object.keys(suggestionChecked).filter(k => suggestionChecked[k]).map(k => {
         const idx = parseInt(k.replace("sug_", ""));
         return currentSuggestionsList[idx];
       }).filter(Boolean);
 
       const documentModifications = {};
       currentDocs.forEach(doc => {
-        if (doc.content) {
-          documentModifications[doc.id] = doc.content;
-        }
+        if (doc.content) documentModifications[doc.id] = doc.content;
       });
 
       try {
@@ -799,270 +1180,32 @@
             description: userDescription,
             evidence_available: evAvailable.concat(sugAvailable),
             evidence_missing: evMissing,
-            document_modifications: documentModifications,
-          }),
+            document_modifications: documentModifications
+          })
         });
+
         if (!res.ok) throw new Error("Update failed");
         const data = await res.json();
+
         currentData = data;
-        document.getElementById("loading-update").classList.add("hidden");
-        document.getElementById("results-section").classList.remove("hidden");
-        renderUpdatedResults(data);
+
+        // Re-render the same deck components, then return to Case Readiness.
+        populateCaseOverview(data);
+        populateLegalGrounding(data);
+        populateReadiness(data);
+        populateActionPlan(data);
+        renderOptions(data.legal_options || data.options || data.legal_paths || [], data.options_comparison_note || data.comparison_note || "");
+        renderDocuments(data);
+
+        showDeck(2);
       } catch (err) {
         console.error("Evidence update failed:", err);
-        document.getElementById("loading-update").classList.add("hidden");
-        document.getElementById("results-section").classList.remove("hidden");
         alert("Failed to update: " + err.message);
+        showDeck(previousDeck);
       } finally {
         btn.disabled = false;
         btn.textContent = "Update Score & Documents";
       }
-    }
-
-    function renderUpdatedResults(data) {
-      // Update summary
-      document.getElementById("result-summary").textContent = data.summary || "No summary available.";
-
-      // Update case type
-      document.getElementById("result-case-type").textContent = (data.case_type || "other").replace(/_/g, " ");
-      document.getElementById("result-legal-domain").textContent = data.legal_domain || "Civil";
-
-      // Update severity
-      const sev = document.getElementById("result-severity");
-      const sv = data.severity || "medium";
-      const sevColors = { low: "bg-[#5C8A6A]/10 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-orange-100 text-orange-700", urgent: "bg-[var(--seal)]/10 text-[var(--seal)]" };
-      sev.className = "mt-1 inline-block px-3 py-1 rounded-full text-sm font-medium " + (sevColors[sv] || "bg-gray-100 text-gray-700");
-      sev.textContent = sv.charAt(0).toUpperCase() + sv.slice(1);
-
-      // Update readiness display
-      const score = data.case_readiness_score || 0;
-      updateReadiness(score);
-      document.getElementById("adjusted-score-display").textContent = score;
-
-      // Update AI message
-      document.getElementById("result-ai-message").textContent = data.ai_message || "";
-
-      // Update law sections
-      const lawContainer = document.getElementById("law-sections-list");
-      lawContainer.innerHTML = "";
-      const sections = data.relevant_sections || [];
-      const noLawMsg = document.getElementById("no-law-sections-msg");
-      if (sections.length === 0) {
-        document.getElementById("law-sections-section").classList.remove("hidden");
-        noLawMsg.classList.remove("hidden");
-      } else {
-        noLawMsg.classList.add("hidden");
-        sections.forEach(s => {
-          const pct = Math.round((s.score || 0) * 100);
-          lawContainer.innerHTML += `
-            <div class="bg-[var(--paper-2)] border border-[var(--rule)]/50 rounded-lg p-3">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-sm font-semibold text-[var(--navy-deep)]">${s.act || ""} — Section ${s.section_number || ""}</span>
-                <span class="text-xs font-mono px-2 py-0.5 rounded-full ${pct >= 70 ? "bg-[#5C8A6A]/15 text-[#4A7156]" : pct >= 50 ? "bg-[var(--gold)]/15 text-[#8C6D1F]" : "bg-gray-100 text-gray-500"}">${pct}% match</span>
-              </div>
-              ${s.section_title ? '<p class="text-xs text-[var(--muted)] mb-1">' + s.section_title + "</p>" : ""}
-              ${s.excerpt ? '<p class="text-xs text-[var(--ink)]/70 leading-relaxed">' + s.excerpt + "</p>" : ""}
-            </div>`;
-        });
-      }
-
-      // Update evidence lists
-      const evAvailList = document.getElementById("evidence-available-list");
-      const evAvailSection = document.getElementById("confirmed-evidence-section");
-      evAvailList.innerHTML = "";
-      const avail = data.evidence_available || [];
-      if (avail.length > 0) {
-        evAvailSection.classList.remove("hidden");
-        avail.forEach(item => {
-          const div = document.createElement("div");
-          div.className = "text-sm text-[#4A7156]";
-          div.innerHTML = '<span class="text-[#5C8A6A] mr-1">&#10003;</span>' + item;
-          evAvailList.appendChild(div);
-        });
-      } else {
-        evAvailSection.classList.add("hidden");
-      }
-
-      // Update risk badge
-      const risk = data.risk_level || "medium";
-      const riskBadge = document.getElementById("risk-badge");
-      const riskColors = { low: "bg-[#5C8A6A]/10 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-[var(--seal)]/10 text-[var(--seal)]" };
-      riskBadge.className = "inline-block px-3 py-1 rounded-full text-sm font-medium " + (riskColors[risk] || "bg-gray-100 text-gray-700");
-      riskBadge.textContent = "Risk: " + risk.charAt(0).toUpperCase() + risk.slice(1);
-
-      // Re-render evidence checklist using the EXISTING list (don't overwrite)
-      const checklist = document.getElementById("evidence-checklist");
-      document.getElementById("total-evidence-count").textContent = currentEvidenceList.length;
-      checklist.innerHTML = "";
-      if (currentEvidenceList.length > 0) {
-        currentEvidenceList.forEach((item, idx) => {
-          const key = "ev_" + idx;
-          if (!(key in evidenceChecked)) evidenceChecked[key] = false;
-          const div = document.createElement("div");
-          div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-[var(--paper-2)]/60 transition-colors";
-          div.innerHTML = `
-            <input type="checkbox" id="${key}" class="evidence-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0"
-              onchange="onEvidenceChange()" ${evidenceChecked[key] ? "checked" : ""}>
-            <label for="${key}" class="evidence-label text-sm text-[var(--ink)] cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
-          `;
-          checklist.appendChild(div);
-        });
-      } else {
-        checklist.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No evidence items required.</p>';
-      }
-
-      // Re-render suggestions using the EXISTING list
-      const sugSection = document.getElementById("suggestions-section");
-      const sugList = document.getElementById("suggestions-checklist");
-      document.getElementById("total-suggestion-count").textContent = currentSuggestionsList.length;
-      sugList.innerHTML = "";
-      if (currentSuggestionsList.length > 0) {
-        sugSection.classList.remove("hidden");
-        currentSuggestionsList.forEach((item, idx) => {
-          const key = "sug_" + idx;
-          if (!(key in suggestionChecked)) suggestionChecked[key] = false;
-          const div = document.createElement("div");
-          div.className = "flex items-start gap-3 p-1.5 rounded hover:bg-[var(--gold)]/10 transition-colors";
-          div.innerHTML = `
-            <input type="checkbox" id="${key}" class="suggestion-checkbox mt-0.5 w-4 h-4 border-[var(--rule)] rounded focus:ring-0 cursor-pointer flex-shrink-0"
-              onchange="onEvidenceChange()" ${suggestionChecked[key] ? "checked" : ""}>
-            <label for="${key}" class="suggestion-label text-sm text-[var(--ink)]/80 cursor-pointer select-none flex-1"><span class="ev-text">${item}</span></label>
-          `;
-          sugList.appendChild(div);
-        });
-      } else {
-        sugSection.classList.add("hidden");
-      }
-
-      const evAvail = Object.keys(evidenceChecked).filter(k => evidenceChecked[k]).length;
-      const sugAvail = Object.keys(suggestionChecked).filter(k => suggestionChecked[k]).length;
-      document.getElementById("checked-count").textContent = evAvail;
-      document.getElementById("suggestion-checked-count").textContent = sugAvail;
-
-      // Update documents (regenerated with evidence context)
-      renderDocuments(data);
-
-      // Update action plan
-      const planList = document.getElementById("action-plan-list");
-      planList.innerHTML = "";
-      const steps = data.next_steps || [];
-      if (steps.length > 0) {
-        steps.forEach((s, i) => {
-          const text = typeof s === "string" ? s : (s.text || "");
-          const li = document.createElement("li");
-          li.className = "flex items-start gap-3 text-sm text-[var(--ink)]";
-          li.innerHTML = '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">' + (i + 1) + '</span><span class="leading-relaxed pt-0.5">' + text + '</span>';
-          planList.appendChild(li);
-        });
-      } else {
-        const recActions = data.recommended_actions || [];
-        if (recActions.length > 0) {
-          recActions.forEach((a, i) => {
-            const li = document.createElement("li");
-            li.className = "flex items-start gap-3 text-sm text-[var(--ink)]";
-            li.innerHTML = '<span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">' + (i + 1) + '</span><span class="leading-relaxed pt-0.5">' + a + '</span>';
-            planList.appendChild(li);
-          });
-        } else {
-          planList.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No action steps generated.</p>';
-        }
-      }
-    }
-
-    let currentOptions = [];
-    let currentOptionIndex = 0;
-
-    function esc(s) {
-      return String(s == null ? "" : s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    }
-
-    function renderOptions(options, comparisonNote) {
-      const panel = document.getElementById("options-panel");
-      const noteEl = document.getElementById("options-comparison-note");
-      currentOptions = (options || []).slice();
-      if (currentOptions.length === 0) {
-        panel.classList.add("hidden");
-        return;
-      }
-      // Recommended option first
-      currentOptions.sort((a, b) => (b.recommended === true) - (a.recommended === true));
-      noteEl.textContent = comparisonNote || "";
-      currentOptionIndex = 0;
-      panel.classList.remove("hidden");
-      renderCurrentOption();
-    }
-
-    function renderCurrentOption() {
-      const opt = currentOptions[currentOptionIndex];
-      if (!opt) return;
-      document.getElementById("options-counter").textContent =
-        "Option " + (currentOptionIndex + 1) + " of " + currentOptions.length;
-
-      const recBadge = opt.recommended
-        ? '<span class="inline-block ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold text-white bg-[#5C8A6A]">RECOMMENDED</span>'
-        : "";
-      const tagline = opt.tagline ? '<p class="text-sm text-[var(--muted)] mt-1">' + esc(opt.tagline) + "</p>" : "";
-
-      const success = Math.max(0, Math.min(100, parseInt(opt.success_likelihood) || 0));
-      const successColor = success >= 70 ? "bg-[#5C8A6A]" : success >= 40 ? "bg-[var(--gold)]" : "bg-[var(--seal)]";
-      const effortColor = ({ Low: "bg-[#5C8A6A]/15 text-[#4A7156]", Medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", High: "bg-[var(--seal)]/10 text-[var(--seal)]" })[opt.effort] || "bg-gray-100 text-gray-700";
-      const riskColor = ({ low: "bg-[#5C8A6A]/15 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-[var(--seal)]/10 text-[var(--seal)]" })[opt.risk_level] || "bg-gray-100 text-gray-700";
-
-      const chips = `
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Forum</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.forum)}</div></div>
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Cost</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.cost_range)}</div></div>
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Time</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.time_range)}</div></div>
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Effort</div><div class="font-medium mt-0.5"><span class="inline-block px-2 py-0.5 rounded-full ${effortColor}">${esc(opt.effort)}</span></div></div>
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Success</div><div class="font-medium mt-0.5 flex items-center gap-1"><div class="w-12 h-1.5 bg-[var(--paper-2)] rounded-full overflow-hidden"><div class="h-full ${successColor}" style="width:${success}%"></div></div><span class="font-mono text-[var(--navy-deep)]">${success}%</span></div></div>
-          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Risk</div><div class="font-medium mt-0.5"><span class="inline-block px-2 py-0.5 rounded-full ${riskColor}">${esc(opt.risk_level)}</span></div></div>
-        </div>
-      `;
-
-      const pros = (opt.pros || []).map(p => '<li class="text-sm text-[#4A7156] flex gap-2"><span>&#10003;</span><span>' + esc(p) + "</span></li>").join("");
-      const cons = (opt.cons || []).map(c => '<li class="text-sm text-[var(--seal)] flex gap-2"><span>&#10007;</span><span>' + esc(c) + "</span></li>").join("");
-      const steps = (opt.next_steps || []).map((s, i) => '<li class="flex items-start gap-3 text-sm text-[var(--ink)]"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">' + (i + 1) + '</span><span class="leading-relaxed pt-0.5">' + esc(s) + "</span></li>").join("");
-
-      const bestFor = opt.best_for ? '<p class="text-sm mt-3"><span class="text-[var(--navy)] font-semibold">Best for:</span> <span class="text-[var(--navy-deep)]">' + esc(opt.best_for) + "</span></p>" : "";
-      const interop = opt.interoperability_note ? '<p class="text-sm mt-2 text-[#6B4E9E]"><span class="font-semibold">Interoperability:</span> ' + esc(opt.interoperability_note) + "</p>" : "";
-      const docs = (opt.applicable_documents && opt.applicable_documents.length) ? '<p class="text-xs text-[var(--muted)] mt-2">Documents: ' + opt.applicable_documents.map(esc).join(", ") + "</p>" : "";
-
-      document.getElementById("options-content").innerHTML = `
-        <div class="border border-[var(--rule)] rounded-xl p-4 mt-3">
-          <h4 class="text-base font-display font-semibold text-[var(--navy-deep)] flex items-center flex-wrap">${esc(opt.name)}${recBadge}</h4>
-          ${tagline}
-          ${chips}
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            <div><h5 class="text-xs font-semibold uppercase tracking-wide text-[#4A7156] mb-1">Pros</h5><ul class="space-y-1">${pros}</ul></div>
-            <div><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--seal)] mb-1">Cons</h5><ul class="space-y-1">${cons}</ul></div>
-          </div>
-          ${bestFor}
-          ${interop}
-          <div class="mt-4"><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--navy)] mb-2">Next Steps</h5><ol class="space-y-2">${steps}</ol></div>
-          ${docs}
-        </div>
-      `;
-    }
-
-    function nextOption() {
-      if (currentOptions.length === 0) return;
-      currentOptionIndex = (currentOptionIndex + 1) % currentOptions.length;
-      renderCurrentOption();
-    }
-    function prevOption() {
-      if (currentOptions.length === 0) return;
-      currentOptionIndex = (currentOptionIndex - 1 + currentOptions.length) % currentOptions.length;
-      renderCurrentOption();
-    }
-    function chooseOption() {
-      const opt = currentOptions[currentOptionIndex];
-      if (!opt) return;
-      const btn = document.getElementById("choose-option");
-      btn.classList.add("ring-2", "ring-[#5C8A6A]", "ring-offset-2");
-      alert("You selected: " + opt.name + ". " + (opt.tagline || "We'll help you proceed with this path."));
     }
 
     function renderDocuments(data) {
@@ -1146,6 +1289,28 @@
       } catch (err) {
         alert("Failed to generate PDF: " + err.message);
       }
+    }
+
+    // Quick test helper to render sample data without backend
+    function runSample() {
+      const sample = {
+        ai_message: "Sample AI summary: landlord withheld deposit without evidence.",
+        summary: "Tenant vacated property; landlord withheld deposit claiming damage.",
+        case_type: "deposit_dispute",
+        legal_domain: "Civil",
+        severity: "medium",
+        relevant_sections: [{ act: "Model Tenancy Act", section_number: "12", section_title: "Return of deposit", excerpt: "Landlord must return deposit unless proven damages." }],
+        case_readiness_score: 45,
+        required_readiness_score: 80,
+        risk_level: "medium",
+        evidence_missing: ["Original rental agreement", "Bank transfer receipt"],
+        evidence_suggestions: ["Photos of property", "Witness statement"],
+        next_steps: ["Send legal notice", "Collect receipts", "File small claims"],
+        legal_options: [{ name: "Negotiation", tagline: "Talk to landlord first", recommended: false }, { name: "Legal Notice", tagline: "Formal demand letter", recommended: true }],
+        legal_notice_draft: "[Draft legal notice goes here...]",
+        other_documents: []
+      };
+      displayResults(sample);
     }
   </script>
 </body>

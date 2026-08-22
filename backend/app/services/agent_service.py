@@ -149,7 +149,48 @@ class AgentService:
                     extra_body={"reasoning": {"enabled": True}},
                     timeout=timeout,
                 )
-                content = response.choices[0].message.content.strip() or ""
+
+                # Defensive extraction of text/content from provider responses.
+                content = ""
+                try:
+                    choices = getattr(response, "choices", None) or response.get("choices") if isinstance(response, dict) else None
+                except Exception:
+                    choices = None
+
+                if choices and len(choices) > 0:
+                    first = choices[0]
+                    # support different shapes: object with .message.content, dict with 'message':{'content':...}, or 'text'
+                    try:
+                        msg = None
+                        if hasattr(first, "message"):
+                            msg = getattr(first, "message")
+                        elif isinstance(first, dict):
+                            msg = first.get("message") or first
+                        if isinstance(msg, dict):
+                            content = msg.get("content") or msg.get("text") or ""
+                        elif hasattr(msg, "content"):
+                            content = getattr(msg, "content") or getattr(msg, "text", "") or ""
+                        else:
+                            # fallback to top-level text field
+                            content = getattr(first, "text", None) or (first.get("text") if isinstance(first, dict) else "")
+                    except Exception:
+                        content = ""
+
+                # Final safety: ensure string and strip
+                if content is None:
+                    content = ""
+                try:
+                    content = str(content).strip()
+                except Exception:
+                    content = ""
+
+                if not content:
+                    # Log raw response for debugging when no content extracted
+                    try:
+                        logger.debug(f"LLM raw response (no content): {response}")
+                    except Exception:
+                        logger.debug("LLM raw response unavailable")
+
                 logger.debug(f"LLM response: {len(content)} chars")
                 return content
             except (RateLimitError, APITimeoutError, APIConnectionError) as e:
@@ -617,13 +658,20 @@ class AgentService:
             docs_data = {}
 
         other_documents = []
-        for doc in docs_data.get("other_documents", []):
-            content = doc.get("content", "")
-            content = content.replace("\\n", "\n")
+        for doc in docs_data.get("other_documents", []) or []:
+            if isinstance(doc, dict):
+                content = doc.get("content", "") or ""
+                content = content.replace("\\n", "\n")
+                doc_type = doc.get("doc_type", "document")
+                title = doc.get("title", "Legal Document")
+            else:
+                content = str(doc)
+                doc_type = "document"
+                title = "Legal Document"
             other_documents.append(DocumentDTO(
                 id=_generate_doc_id(), case_id="",
-                doc_type=doc.get("doc_type", "document"),
-                title=doc.get("title", "Legal Document"),
+                doc_type=doc_type,
+                title=title,
                 content=content, status="draft",
             ))
 
@@ -634,12 +682,22 @@ class AgentService:
             plan_data = {}
 
         action_steps = []
-        for s in plan_data.get("next_steps", []):
+        for idx, s in enumerate(plan_data.get("next_steps", []) or []):
+            if isinstance(s, dict):
+                number = s.get("number") or (idx + 1)
+                text = s.get("text", "")
+                action_type = s.get("action_type", "info_gathering")
+                action_config = s.get("action_config", {}) or {}
+            else:
+                number = idx + 1
+                text = str(s)
+                action_type = "info_gathering"
+                action_config = {}
             action_steps.append(ActionStep(
-                number=s.get("number", 1),
-                text=s.get("text", ""),
-                action_type=s.get("action_type", "info_gathering"),
-                action_config=s.get("action_config", {}),
+                number=number,
+                text=text,
+                action_type=action_type,
+                action_config=action_config,
                 status="pending",
             ))
 
