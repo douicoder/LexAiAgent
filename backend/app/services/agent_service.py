@@ -21,6 +21,7 @@ from app.dto.agent_dto import (
     DocumentDTO,
     ExecuteActionRequest,
     ExecuteActionResponse,
+    LegalOptionDTO,
 )
 from app.helpers.legal_helper import LegalHelper
 from app.helpers.text_helper import TextHelper
@@ -291,6 +292,121 @@ class AgentService:
         except Exception:
             return description
 
+    async def _generate_options(
+        self, description: str, case_type: str, section_refs: str
+    ) -> tuple[list[LegalOptionDTO], str]:
+        """Generate 3-4 distinct Indian legal remedies with a comparison note."""
+        opts_prompt = (
+            "You are a practical Indian legal advisor. For the case below, propose "
+            "3 to 4 DISTINCT legal remedies or forums the user can pursue (e.g., "
+            "Legal Notice, Rent Authority / Civil Suit, Mediation, Consumer Forum).\n\n"
+            "For EACH option return an object with exactly these fields:\n"
+            "- id: short id like 'opt-001'\n"
+            "- name: remedy name\n"
+            "- forum: where it is pursued\n"
+            "- tagline: one-line summary (optional)\n"
+            "- recommended: boolean — EXACTLY ONE option must be true\n"
+            "- cost_range: e.g. 'Rs.500-2,000'\n"
+            "- time_range: e.g. '7-15 days'\n"
+            "- effort: one of 'Low' | 'Medium' | 'High'\n"
+            "- success_likelihood: integer 0-100\n"
+            "- risk_level: one of 'low' | 'medium' | 'high'\n"
+            "- pros: list of strings (non-empty)\n"
+            "- cons: list of strings (non-empty)\n"
+            "- evidence_required: list of strings\n"
+            "- best_for: one of 'cost' | 'time' | 'success' | 'risk' | 'control'\n"
+            "- interoperability_note: string explaining how this option relates to the others\n"
+            "- next_steps: list of actionable strings (non-empty)\n"
+            "- applicable_documents: list of strings\n\n"
+            "Also return a top-level 'comparison_note' string (one sentence) summarizing "
+            "trade-offs across all options.\n\n"
+            "Return ONLY valid JSON of the form:\n"
+            '{"options": [ ... ], "comparison_note": "..."}\n\n'
+            f"Case type: {case_type}\n\n"
+            f"Case description:\n{description}\n\n"
+            f"Relevant laws:\n{section_refs}\n"
+        )
+        try:
+            raw = await self._call_llm(
+                FAST_MODEL,
+                [
+                    {"role": "system", "content": self.legal.system_prompt()},
+                    {"role": "user", "content": opts_prompt},
+                ],
+                3000,
+                client=self.client,
+            )
+            data = _extract_json(raw)
+            options: list[LegalOptionDTO] = []
+            for o in data.get("options", []):
+                if not isinstance(o, dict):
+                    continue
+                opt = LegalOptionDTO(
+                    id=str(o.get("id", f"opt-{len(options) + 1:03d}")),
+                    name=str(o.get("name", "Legal Option")),
+                    forum=str(o.get("forum", "")),
+                    tagline=str(o.get("tagline", "")),
+                    recommended=bool(o.get("recommended", False)),
+                    cost_range=str(o.get("cost_range", "")),
+                    time_range=str(o.get("time_range", "")),
+                    effort=str(o.get("effort", "")),
+                    success_likelihood=int(o.get("success_likelihood", 0) or 0),
+                    risk_level=str(o.get("risk_level", "medium")),
+                    pros=[str(x) for x in (o.get("pros") or [])],
+                    cons=[str(x) for x in (o.get("cons") or [])],
+                    evidence_required=[str(x) for x in (o.get("evidence_required") or [])],
+                    best_for=str(o.get("best_for", "")),
+                    interoperability_note=str(o.get("interoperability_note", "")),
+                    next_steps=[str(x) for x in (o.get("next_steps") or [])],
+                    applicable_documents=[str(x) for x in (o.get("applicable_documents") or [])],
+                )
+                options.append(opt)
+
+            # Enforce exactly one recommended option
+            if not any(o.recommended for o in options) and options:
+                options[0].recommended = True
+            else:
+                seen = False
+                for o in options:
+                    if o.recommended and not seen:
+                        seen = True
+                    elif o.recommended and seen:
+                        o.recommended = False
+
+            comparison_note = str(data.get("comparison_note", ""))
+            if not options:
+                return self._options_fallback(description)
+            return options, comparison_note
+        except Exception as e:
+            logger.warning(f"[options] generation failed: {e}")
+            return self._options_fallback(description)
+
+    def _options_fallback(self, description: str) -> tuple[list[LegalOptionDTO], str]:
+        opt = LegalOptionDTO(
+            id="opt-001",
+            name="Legal Notice",
+            forum="Advocate + Registered Post / Email",
+            tagline="Fastest, cheapest first step to recover deposit",
+            recommended=True,
+            cost_range="Rs.500-2,000",
+            time_range="7-15 days",
+            effort="Low",
+            success_likelihood=70,
+            risk_level="low",
+            pros=["Cheap and fast", "Often recovers deposit without court", "Preserves relationship"],
+            cons=["No binding order if ignored", "May need follow-up suit"],
+            evidence_required=["UPI/rent payment proofs", "Lock-out evidence", "Landlord contact details"],
+            best_for="time",
+            interoperability_note="Notice is a prerequisite for a civil suit and can run parallel to mediation.",
+            next_steps=[
+                "Draft notice with facts + 15-day compliance deadline",
+                "Send via registered post / email",
+                "Keep proof of delivery",
+            ],
+            applicable_documents=["Legal Notice Template", "Model Tenancy Act Section 11"],
+        )
+        return [opt], "Consult a qualified advocate to choose the best forum for your facts."
+
     async def _run_llm_analysis(self, description: str, use_client=None) -> AnalyzeResponseDTO:
         reasoning_trace = []
         today = datetime.now(timezone.utc).strftime("%d %B %Y")
@@ -342,6 +458,9 @@ class AgentService:
         user_role = classification.get("user_role", "other")
         severity = classification.get("severity", "medium")
         legal_domain = classification.get("legal_domain", "")
+
+        # Options generation (runs in parallel with the 4 generation calls below)
+        options_task = self._generate_options(description, case_type, section_refs)
 
         base_context = (
             f"Case: {description}\n"
@@ -465,9 +584,10 @@ class AgentService:
             {"role": "user", "content": plan_prompt},
         ], 2000, client=client)
 
-        notice_text, evidence_text, docs_text, plan_text = await asyncio.gather(
-            notice_task, evidence_task, docs_task, plan_task
+        notice_text, evidence_text, docs_text, plan_text, options_result = await asyncio.gather(
+            notice_task, evidence_task, docs_task, plan_task, options_task
         )
+        legal_options, option_comparison_note = options_result
 
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 4: Parse all results
@@ -552,6 +672,8 @@ class AgentService:
             is_sufficient=True,
             law_docs_available=AVAILABLE_LAW_DOCS,
             law_docs_coverage=self._get_coverage(case_type),
+            legal_options=legal_options,
+            option_comparison_note=option_comparison_note,
         )
 
     def _get_coverage(self, case_type: str) -> str:
