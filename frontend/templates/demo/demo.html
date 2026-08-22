@@ -125,6 +125,7 @@
         <button onclick="fillScenario(1)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Landlord deposit</button>
         <button onclick="fillScenario(2)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Lease termination</button>
         <button onclick="fillScenario(3)" class="text-xs bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] px-3 py-1.5 rounded-full transition-colors border border-[var(--rule)]">Property damage</button>
+        <button onclick="fillScenario('demo')" class="text-xs bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white px-3 py-1.5 rounded-full transition-colors">Try a sample case</button>
       </div>
       <div class="flex gap-2 mt-4">
         <button id="improve-btn" onclick="improvePrompt()" class="flex-1 bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--rule)]">
@@ -282,6 +283,26 @@
         <ol id="action-plan-list" class="space-y-3"></ol>
       </div>
 
+      <!-- Legal Options (interoperability) -->
+      <div id="options-panel" class="hidden card p-6 slide-up">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <div class="eyebrow mb-1">Legal Options</div>
+            <h3 class="text-sm font-display font-semibold text-[var(--navy-deep)]">Choose your path</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="prev-option" onclick="prevOption()" class="bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--rule)] transition-colors">&#8592; Prev</button>
+            <span id="options-counter" class="text-xs font-mono text-[var(--muted)]"></span>
+            <button id="next-option" onclick="nextOption()" class="bg-[var(--paper-2)] hover:bg-[var(--rule)] text-[var(--navy-deep)] text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--rule)] transition-colors">Next &#8594;</button>
+          </div>
+        </div>
+        <p id="options-comparison-note" class="text-xs text-[var(--navy)] bg-[var(--navy)]/5 border border-[var(--navy)]/15 rounded-lg p-3 mb-4"></p>
+        <div id="options-content"></div>
+        <div class="mt-4 flex justify-end">
+          <button id="choose-option" onclick="chooseOption()" class="bg-[var(--navy)] hover:bg-[var(--navy-deep)] text-white font-medium py-2 px-5 rounded-lg transition-colors">Choose This Option</button>
+        </div>
+      </div>
+
       <!-- Documents Section -->
       <div class="card p-6 slide-up">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -337,6 +358,7 @@
       1: "My landlord is refusing to return my ₹50,000 security deposit. I vacated the apartment 3 months ago and left it in perfect condition. He claims there was damage but has provided no evidence or photos. I have the original rental agreement and bank transfer records for the deposit payment.",
       2: "My landlord served me an illegal eviction notice claiming I violated the lease by having a pet. I have lived here for 2 years with the pet and the landlord was aware. The lease doesn't mention pets. I need help fighting this wrongful termination of my tenancy.",
       3: "The property I rented has severe water damage from a leaky roof that the landlord refuses to fix. My furniture has been damaged. I've sent multiple emails but he ignores me. I have photos of the damage and email records. I want to force him to make repairs and compensate me.",
+      demo: "Landlord locked me out and won't return my Rs.50,000 deposit after 11 months; no written agreement, only UPI rent proofs.",
     };
 
     let currentData = null;
@@ -692,6 +714,9 @@
       }
 
       renderDocuments(data);
+
+      // Legal options (interoperability)
+      renderOptions(data.legal_options || [], data.option_comparison_note || "");
     }
 
     function updateReadiness(score) {
@@ -942,6 +967,102 @@
           planList.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No action steps generated.</p>';
         }
       }
+    }
+
+    let currentOptions = [];
+    let currentOptionIndex = 0;
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function renderOptions(options, comparisonNote) {
+      const panel = document.getElementById("options-panel");
+      const noteEl = document.getElementById("options-comparison-note");
+      currentOptions = (options || []).slice();
+      if (currentOptions.length === 0) {
+        panel.classList.add("hidden");
+        return;
+      }
+      // Recommended option first
+      currentOptions.sort((a, b) => (b.recommended === true) - (a.recommended === true));
+      noteEl.textContent = comparisonNote || "";
+      currentOptionIndex = 0;
+      panel.classList.remove("hidden");
+      renderCurrentOption();
+    }
+
+    function renderCurrentOption() {
+      const opt = currentOptions[currentOptionIndex];
+      if (!opt) return;
+      document.getElementById("options-counter").textContent =
+        "Option " + (currentOptionIndex + 1) + " of " + currentOptions.length;
+
+      const recBadge = opt.recommended
+        ? '<span class="inline-block ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold text-white bg-[#5C8A6A]">RECOMMENDED</span>'
+        : "";
+      const tagline = opt.tagline ? '<p class="text-sm text-[var(--muted)] mt-1">' + esc(opt.tagline) + "</p>" : "";
+
+      const success = Math.max(0, Math.min(100, parseInt(opt.success_likelihood) || 0));
+      const successColor = success >= 70 ? "bg-[#5C8A6A]" : success >= 40 ? "bg-[var(--gold)]" : "bg-[var(--seal)]";
+      const effortColor = ({ Low: "bg-[#5C8A6A]/15 text-[#4A7156]", Medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", High: "bg-[var(--seal)]/10 text-[var(--seal)]" })[opt.effort] || "bg-gray-100 text-gray-700";
+      const riskColor = ({ low: "bg-[#5C8A6A]/15 text-[#4A7156]", medium: "bg-[var(--gold)]/15 text-[#8C6D1F]", high: "bg-[var(--seal)]/10 text-[var(--seal)]" })[opt.risk_level] || "bg-gray-100 text-gray-700";
+
+      const chips = `
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Forum</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.forum)}</div></div>
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Cost</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.cost_range)}</div></div>
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Time</div><div class="font-medium text-[var(--navy-deep)] mt-0.5">${esc(opt.time_range)}</div></div>
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Effort</div><div class="font-medium mt-0.5"><span class="inline-block px-2 py-0.5 rounded-full ${effortColor}">${esc(opt.effort)}</span></div></div>
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Success</div><div class="font-medium mt-0.5 flex items-center gap-1"><div class="w-12 h-1.5 bg-[var(--paper-2)] rounded-full overflow-hidden"><div class="h-full ${successColor}" style="width:${success}%"></div></div><span class="font-mono text-[var(--navy-deep)]">${success}%</span></div></div>
+          <div class="rounded-lg border border-[var(--rule)] p-2"><div class="text-[var(--muted)] uppercase tracking-wide text-[10px]">Risk</div><div class="font-medium mt-0.5"><span class="inline-block px-2 py-0.5 rounded-full ${riskColor}">${esc(opt.risk_level)}</span></div></div>
+        </div>
+      `;
+
+      const pros = (opt.pros || []).map(p => '<li class="text-sm text-[#4A7156] flex gap-2"><span>&#10003;</span><span>' + esc(p) + "</span></li>").join("");
+      const cons = (opt.cons || []).map(c => '<li class="text-sm text-[var(--seal)] flex gap-2"><span>&#10007;</span><span>' + esc(c) + "</span></li>").join("");
+      const steps = (opt.next_steps || []).map((s, i) => '<li class="flex items-start gap-3 text-sm text-[var(--ink)]"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-xs font-mono font-medium">' + (i + 1) + '</span><span class="leading-relaxed pt-0.5">' + esc(s) + "</span></li>").join("");
+
+      const bestFor = opt.best_for ? '<p class="text-sm mt-3"><span class="text-[var(--navy)] font-semibold">Best for:</span> <span class="text-[var(--navy-deep)]">' + esc(opt.best_for) + "</span></p>" : "";
+      const interop = opt.interoperability_note ? '<p class="text-sm mt-2 text-[#6B4E9E]"><span class="font-semibold">Interoperability:</span> ' + esc(opt.interoperability_note) + "</p>" : "";
+      const docs = (opt.applicable_documents && opt.applicable_documents.length) ? '<p class="text-xs text-[var(--muted)] mt-2">Documents: ' + opt.applicable_documents.map(esc).join(", ") + "</p>" : "";
+
+      document.getElementById("options-content").innerHTML = `
+        <div class="border border-[var(--rule)] rounded-xl p-4 mt-3">
+          <h4 class="text-base font-display font-semibold text-[var(--navy-deep)] flex items-center flex-wrap">${esc(opt.name)}${recBadge}</h4>
+          ${tagline}
+          ${chips}
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <div><h5 class="text-xs font-semibold uppercase tracking-wide text-[#4A7156] mb-1">Pros</h5><ul class="space-y-1">${pros}</ul></div>
+            <div><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--seal)] mb-1">Cons</h5><ul class="space-y-1">${cons}</ul></div>
+          </div>
+          ${bestFor}
+          ${interop}
+          <div class="mt-4"><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--navy)] mb-2">Next Steps</h5><ol class="space-y-2">${steps}</ol></div>
+          ${docs}
+        </div>
+      `;
+    }
+
+    function nextOption() {
+      if (currentOptions.length === 0) return;
+      currentOptionIndex = (currentOptionIndex + 1) % currentOptions.length;
+      renderCurrentOption();
+    }
+    function prevOption() {
+      if (currentOptions.length === 0) return;
+      currentOptionIndex = (currentOptionIndex - 1 + currentOptions.length) % currentOptions.length;
+      renderCurrentOption();
+    }
+    function chooseOption() {
+      const opt = currentOptions[currentOptionIndex];
+      if (!opt) return;
+      const btn = document.getElementById("choose-option");
+      btn.classList.add("ring-2", "ring-[#5C8A6A]", "ring-offset-2");
+      alert("You selected: " + opt.name + ". " + (opt.tagline || "We'll help you proceed with this path."));
     }
 
     function renderDocuments(data) {
