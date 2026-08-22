@@ -192,9 +192,10 @@ def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
     response = client.embeddings.create(
         model=settings.EMBEDDING_MODEL,
         input=texts,
-        dimensions=1536,
     )
-    return [data.embedding for data in response.data]
+    embeddings = [data.embedding for data in response.data]
+    dim = 1536
+    return [emb + [0.0] * (dim - len(emb)) if len(emb) < dim else emb for emb in embeddings]
 
 
 # ── STEP 5: STORE IN SUPABASE ──────────────────────────────────────────────

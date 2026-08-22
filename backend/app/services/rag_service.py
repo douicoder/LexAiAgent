@@ -38,13 +38,19 @@ class RagService(IRagService):
         self._reranker = None
 
     # ── Embedding ──────────────────────────────────────────────────────────
+    # Stored vectors are 1536-dim; some providers (e.g. Jina v5) return fewer.
+    # Zero-padding to 1536 keeps cosine similarity unchanged and DB/RPC intact.
+    EMBED_DIM = 1536
+
     async def _embed_text(self, text: str) -> list[float]:
         response = self.client.embeddings.create(
             model=self.embedding_model,
             input=text,
-            dimensions=1536,
         )
-        return response.data[0].embedding
+        emb = response.data[0].embedding
+        if len(emb) < self.EMBED_DIM:
+            emb = emb + [0.0] * (self.EMBED_DIM - len(emb))
+        return emb
 
     # ── Reranker lazy init ─────────────────────────────────────────────────
     def _ensure_reranker(self):
