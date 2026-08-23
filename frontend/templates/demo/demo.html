@@ -169,6 +169,7 @@
       border-radius: 0.5rem;
     }
     .deck-start:hover { background: var(--rule); }
+    .deck-heading .deck-start { flex-shrink: 0; }
     .option-card {
       border: 1px solid var(--rule);
       border-radius: 0.5rem;
@@ -176,6 +177,11 @@
       background: #fff;
     }
     .option-card + .option-card { margin-top: 0.75rem; }
+    .option-nav { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-top:1rem; padding-top:1rem; border-top:1px solid var(--rule); }
+    .option-nav button { background:var(--paper-2); border:1px solid var(--rule); color:var(--navy-deep); font-size:.75rem; font-weight:500; padding:.45rem .75rem; border-radius:.5rem; transition:all .2s ease; }
+    .option-nav button:hover:not(:disabled) { background:var(--rule); }
+    .option-nav button:disabled { opacity:.45; cursor:not-allowed; }
+    .option-counter { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); letter-spacing:.08em; }
     .option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
     @media (max-width: 640px) {
       .deck-card, .deck-viewport { min-height: 680px; }
@@ -204,10 +210,7 @@
     </div>
 
     <!-- Law Docs Status Banner -->
-    <div id="law-docs-banner" class="hidden border border-[var(--navy)]/20 bg-[var(--navy)]/5 rounded-lg p-4 mb-6 text-sm text-[var(--navy-deep)]">
-      <span class="font-semibold font-display">Law documents available:</span>
-      <span id="law-docs-list"></span>
-    </div>
+
 
     <!-- Step 1: Problem Description -->
     <div id="step-input" class="card p-6 mb-6 fade-in">
@@ -233,7 +236,13 @@
     <!-- Progress Steps -->
     <div id="progress-section" class="hidden mb-6">
       <div class="card p-6">
-        <h3 class="eyebrow mb-4">Analysis in progress</h3>
+        <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h3 class="eyebrow mb-0">Analysis in progress</h3>
+          <div class="text-[11px] font-mono uppercase tracking-wide text-[var(--navy)] bg-[var(--navy)]/5 border border-[var(--navy)]/15 rounded-full px-2.5 py-1">
+            Est. <span id="analysis-time-remaining">90s</span>
+          </div>
+        </div>
+        <p id="analysis-status-text" class="text-xs text-[var(--muted)] mb-3">Preparing your legal assessment. This typically takes around 60–90 seconds.</p>
         <div class="space-y-2">
           <div id="prog-classify" class="progress-step flex items-center gap-3 p-3 rounded-lg step-pending">
             <div class="w-5 h-5 rounded-full border-2 border-[var(--rule)] flex-shrink-0" id="icon-classify"></div>
@@ -280,10 +289,7 @@
                 <div class="deck-kicker">Deck 01 · Case Overview</div>
                 <h2>AI Case Assessment</h2>
               </div>
-                <div class="flex gap-2">
-                  <button class="deck-start" onclick="startNewCase()">Start New</button>
-                  <button class="deck-start" onclick="runSample()">Run Sample</button>
-                </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
 
             <div class="deck-scroll space-y-4">
@@ -319,7 +325,10 @@
                 </div>
               </div>
 
-             
+              <div id="law-docs-inline" class="hidden border border-[var(--navy)]/20 bg-[var(--navy)]/5 rounded-lg p-4 text-sm text-[var(--navy-deep)]">
+                <span class="font-semibold font-display">Law documents available:</span>
+                <span id="law-docs-list"></span>
+              </div>
             </div>
           </div>
         </article>
@@ -332,6 +341,7 @@
                 <div class="deck-kicker">Deck 02 · Legal Grounding</div>
                 <h2>Grounded Legal Analysis</h2>
               </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
             <div class="deck-scroll">
               <div class="card p-6 slide-up">
@@ -356,6 +366,7 @@
                 <div class="deck-kicker">Deck 03 · Case Readiness</div>
                 <h2>Case Readiness Assessment</h2>
               </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
 
             <div class="deck-scroll">
@@ -438,6 +449,7 @@
                 <div class="deck-kicker">Deck 04 · Recommended Action Plan</div>
                 <h2>What To Do Next</h2>
               </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
             <div class="deck-scroll">
               <div class="card p-6 slide-up">
@@ -456,6 +468,7 @@
                 <div class="deck-kicker">Deck 05 · Legal Options</div>
                 <h2>Available Legal Options</h2>
               </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
             <div class="deck-scroll">
               <div class="card p-6 slide-up">
@@ -463,6 +476,11 @@
                 <div id="options-panel"></div>
                 <div id="options-empty" class="text-sm text-[var(--muted)] italic">
                   No distinct legal options were returned for this case.
+                </div>
+                <div id="options-nav" class="option-nav hidden">
+                  <button id="option-prev" type="button" onclick="prevOption()">&#8592; Previous</button>
+                  <span id="option-counter" class="option-counter">1 / 1</span>
+                  <button id="option-next" type="button" onclick="nextOption()">Next &#8594;</button>
                 </div>
               </div>
             </div>
@@ -477,6 +495,7 @@
                 <div class="deck-kicker">Deck 06 · Draft Documents</div>
                 <h2>Draft &amp; Review Documents</h2>
               </div>
+              <button class="deck-start" onclick="startNewCase()">Start New</button>
             </div>
             <div class="deck-scroll">
               <div class="card p-6 slide-up">
@@ -564,6 +583,44 @@
     let currentEvidenceList = [];
     let currentSuggestionsList = [];
     let currentOptions = [];
+    let currentOptionIndex = 0;
+    let analysisTimer = null;
+
+    function startAnalysisTimer() {
+      const statusEl = document.getElementById("analysis-status-text");
+      const timeEl = document.getElementById("analysis-time-remaining");
+      if (!statusEl || !timeEl) return;
+
+      const totalSeconds = 90;
+      const startedAt = Date.now();
+      clearInterval(analysisTimer);
+
+      function tick() {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        const remaining = Math.max(0, totalSeconds - elapsed);
+        timeEl.textContent = remaining + "s";
+
+        if (remaining > 50) {
+          statusEl.textContent = "Preparing your legal assessment. This typically takes around 60–90 seconds.";
+        } else if (remaining > 20) {
+          statusEl.textContent = "Checking the law, evidence and risk profile against your facts...";
+        } else {
+          statusEl.textContent = "Finalising the analysis, legal options and draft documents...";
+        }
+      }
+
+      tick();
+      analysisTimer = setInterval(tick, 1000);
+    }
+
+    function stopAnalysisTimer() {
+      if (analysisTimer) {
+        clearInterval(analysisTimer);
+        analysisTimer = null;
+      }
+      const timeEl = document.getElementById("analysis-time-remaining");
+      if (timeEl) timeEl.textContent = "90s";
+    }
 
     function fillScenario(n) {
       document.getElementById("problem-input").value = scenarios[n] || "";
@@ -678,7 +735,8 @@
       document.getElementById("results-section").classList.add("hidden");
       document.getElementById("insufficient-section").classList.add("hidden");
       document.getElementById("error-section").classList.add("hidden");
-      document.getElementById("law-docs-banner").classList.add("hidden");
+      document.getElementById("law-docs-inline").classList.add("hidden");
+      startAnalysisTimer();
 
       setProgress("classify");
 
@@ -707,9 +765,11 @@
         setProgress("notice");
 
         const data = await res.json();
+        stopAnalysisTimer();
         setTimeout(() => displayResults(data), 300);
       } catch (err) {
         clearInterval(progressTimer);
+        stopAnalysisTimer();
         document.getElementById("error-section").classList.remove("hidden");
         const msg = err.name === "AbortError"
           ? "Request timed out after 3 minutes. The AI is taking too long to respond. Please try again."
@@ -776,7 +836,7 @@
       populateLegalGrounding(data);
       populateReadiness(data);
       populateActionPlan(data);
-      renderOptions(data.legal_options || data.options || data.legal_paths || [], data.options_comparison_note || data.comparison_note || "");
+      renderOptions(data.legal_options || data.options || data.legal_paths || [], data.option_comparison_note || data.comparison_note || "");
       renderDocuments(data);
       showDeck(0);
     }
@@ -801,12 +861,12 @@
       document.getElementById("result-summary").textContent =
         data.summary || "No summary available.";
 
-      const lawBanner = document.getElementById("law-docs-inline") || document.getElementById("law-docs-banner");
+      const lawBanner = document.getElementById("law-docs-inline");
       if (data.law_docs_available && data.law_docs_available.length > 0) {
         document.getElementById("law-docs-list").textContent = data.law_docs_available.join(", ");
-        if (lawBanner) lawBanner.classList.remove("hidden");
+        lawBanner.classList.remove("hidden");
       } else {
-        if (lawBanner) lawBanner.classList.add("hidden");
+        lawBanner.classList.add("hidden");
       }
 
       const cw = document.getElementById("coverage-warning");
@@ -980,6 +1040,7 @@
       const panel = document.getElementById("options-panel");
       const empty = document.getElementById("options-empty");
       const noteEl = document.getElementById("options-comparison-note");
+      const nav = document.getElementById("options-nav");
 
       currentOptions = Array.isArray(options) ? options.slice() : [];
       noteEl.textContent = comparisonNote || "";
@@ -987,73 +1048,99 @@
       if (!currentOptions.length) {
         panel.innerHTML = "";
         empty.classList.remove("hidden");
+        nav.classList.add("hidden");
         return;
       }
 
       empty.classList.add("hidden");
       currentOptions.sort((a, b) => (b.recommended === true) - (a.recommended === true));
+      currentOptionIndex = 0;
+      nav.classList.remove("hidden");
+      renderCurrentOption();
+    }
 
-      panel.innerHTML = currentOptions.map((opt, idx) => {
-        const success = Math.max(0, Math.min(100, parseInt(opt.success_likelihood) || 0));
-        const successColor = success >= 70 ? "bg-[#5C8A6A]" : success >= 40 ? "bg-[var(--gold)]" : "bg-[var(--seal)]";
-        const effortColor = ({Low:"bg-[#5C8A6A]/15 text-[#4A7156]",Medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",High:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.effort] || "bg-gray-100 text-gray-700";
-        const riskColor = ({low:"bg-[#5C8A6A]/15 text-[#4A7156]",medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",high:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.risk_level] || "bg-gray-100 text-gray-700";
+    function renderCurrentOption() {
+      const panel = document.getElementById("options-panel");
+      const opt = currentOptions[currentOptionIndex];
+      if (!opt) return;
 
-        const pros = (opt.pros || []).map(x => `<li class="text-sm text-[var(--ink)]">${esc(x)}</li>`).join("");
-        const cons = (opt.cons || []).map(x => `<li class="text-sm text-[var(--ink)]">${esc(x)}</li>`).join("");
-        const steps = (opt.next_steps || []).map((x, i) =>
-          `<li class="flex items-start gap-2 text-sm"><span class="w-5 h-5 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-[10px] font-mono flex-shrink-0">${i+1}</span><span>${esc(typeof x === "string" ? x : (x.text || ""))}</span></li>`
-        ).join("");
+      const success = Math.max(0, Math.min(100, parseInt(opt.success_likelihood) || 0));
+      const successColor = success >= 70 ? "bg-[#5C8A6A]" : success >= 40 ? "bg-[var(--gold)]" : "bg-[var(--seal)]";
+      const effortColor = ({Low:"bg-[#5C8A6A]/15 text-[#4A7156]",Medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",High:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.effort] || "bg-gray-100 text-gray-700";
+      const riskColor = ({low:"bg-[#5C8A6A]/15 text-[#4A7156]",medium:"bg-[var(--gold)]/15 text-[#8C6D1F]",high:"bg-[var(--seal)]/10 text-[var(--seal)]"})[opt.risk_level] || "bg-gray-100 text-gray-700";
 
-        return `
-          <div class="option-card">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h4 class="text-base font-display font-semibold text-[var(--navy-deep)]">
-                  ${esc(opt.name || "Legal Option")}
-                  ${opt.recommended ? '<span class="inline-block ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold text-white bg-[#5C8A6A]">RECOMMENDED</span>' : ""}
-                </h4>
-                ${opt.tagline ? `<p class="text-sm text-[var(--muted)] mt-1">${esc(opt.tagline)}</p>` : ""}
-              </div>
+      const pros = (opt.pros || []).map(x => `<li class="text-sm text-[#4A7156]">${esc(x)}</li>`).join("");
+      const cons = (opt.cons || []).map(x => `<li class="text-sm text-[var(--seal)]">${esc(x)}</li>`).join("");
+      const steps = (opt.next_steps || []).map((x, i) =>
+        `<li class="flex items-start gap-2 text-sm"><span class="w-5 h-5 rounded-full bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center text-[10px] font-mono flex-shrink-0">${i+1}</span><span>${esc(typeof x === "string" ? x : (x.text || ""))}</span></li>`
+      ).join("");
+
+      panel.innerHTML = `
+        <div class="option-card slide-up">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h4 class="text-base font-display font-semibold text-[var(--navy-deep)]">
+                ${esc(opt.name || "Legal Option")}
+                ${opt.recommended ? '<span class="inline-block ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold text-white bg-[#5C8A6A]">RECOMMENDED</span>' : ""}
+              </h4>
+              ${opt.tagline ? `<p class="text-sm text-[var(--muted)] mt-1">${esc(opt.tagline)}</p>` : ""}
             </div>
-
-            <div class="option-grid mt-3">
-              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
-                <div class="eyebrow">Success likelihood</div>
-                <div class="flex items-center gap-2 mt-1">
-                  <div class="h-2 bg-[var(--rule)] rounded-full flex-1 overflow-hidden"><div class="h-full ${successColor}" style="width:${success}%"></div></div>
-                  <span class="text-xs font-mono">${success}%</span>
-                </div>
-              </div>
-              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
-                <div class="eyebrow">Effort</div>
-                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${effortColor}">${esc(opt.effort || "—")}</span>
-              </div>
-              <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
-                <div class="eyebrow">Risk</div>
-                <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${riskColor}">${esc(opt.risk_level || "—")}</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div>
-                <h5 class="text-xs font-semibold uppercase tracking-wide text-[#4A7156] mb-1">Pros</h5>
-                <ul class="space-y-1">${pros || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
-              </div>
-              <div>
-                <h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--seal)] mb-1">Cons</h5>
-                <ul class="space-y-1">${cons || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
-              </div>
-            </div>
-
-            ${opt.best_for ? `<p class="text-sm mt-3"><span class="text-[var(--navy)] font-semibold">Best for:</span> <span class="text-[var(--navy-deep)]">${esc(opt.best_for)}</span></p>` : ""}
-            ${opt.interoperability_note ? `<p class="text-sm mt-2 text-[#6B4E9E]"><span class="font-semibold">Note:</span> ${esc(opt.interoperability_note)}</p>` : ""}
-
-            ${steps ? `<div class="mt-4"><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--navy)] mb-2">Next Steps</h5><ol class="space-y-2">${steps}</ol></div>` : ""}
-            ${opt.applicable_documents && opt.applicable_documents.length ? `<p class="text-xs text-[var(--muted)] mt-2">Documents: ${opt.applicable_documents.map(esc).join(", ")}</p>` : ""}
           </div>
-        `;
-      }).join("");
+
+          <div class="option-grid mt-3">
+            <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+              <div class="eyebrow">Success likelihood</div>
+              <div class="flex items-center gap-2 mt-1">
+                <div class="h-2 bg-[var(--rule)] rounded-full flex-1 overflow-hidden"><div class="h-full ${successColor}" style="width:${success}%"></div></div>
+                <span class="text-xs font-mono">${success}%</span>
+              </div>
+            </div>
+            <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+              <div class="eyebrow">Effort</div>
+              <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${effortColor}">${esc(opt.effort || "—")}</span>
+            </div>
+            <div class="bg-[var(--paper-2)] rounded-lg p-2.5">
+              <div class="eyebrow">Risk</div>
+              <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${riskColor}">${esc(opt.risk_level || "—")}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <div>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-[#4A7156] mb-1">Pros</h5>
+              <ul class="space-y-1">${pros || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
+            </div>
+            <div>
+              <h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--seal)] mb-1">Cons</h5>
+              <ul class="space-y-1">${cons || '<li class="text-sm text-[var(--muted)]">—</li>'}</ul>
+            </div>
+          </div>
+
+          ${opt.best_for ? `<p class="text-sm mt-3"><span class="text-[var(--navy)] font-semibold">Best for:</span> <span class="text-[var(--navy-deep)]">${esc(opt.best_for)}</span></p>` : ""}
+          ${opt.interoperability_note ? `<p class="text-sm mt-2 text-[#6B4E9E]"><span class="font-semibold">Note:</span> ${esc(opt.interoperability_note)}</p>` : ""}
+
+          ${steps ? `<div class="mt-4"><h5 class="text-xs font-semibold uppercase tracking-wide text-[var(--navy)] mb-2">Next Steps</h5><ol class="space-y-2">${steps}</ol></div>` : ""}
+          ${opt.applicable_documents && opt.applicable_documents.length ? `<p class="text-xs text-[var(--muted)] mt-2">Documents: ${opt.applicable_documents.map(esc).join(", ")}</p>` : ""}
+        </div>
+      `;
+
+      document.getElementById("option-counter").textContent = `${currentOptionIndex + 1} / ${currentOptions.length}`;
+      document.getElementById("option-prev").disabled = currentOptionIndex === 0;
+      document.getElementById("option-next").disabled = currentOptionIndex === currentOptions.length - 1;
+    }
+
+    function nextOption() {
+      if (currentOptionIndex < currentOptions.length - 1) {
+        currentOptionIndex++;
+        renderCurrentOption();
+      }
+    }
+
+    function prevOption() {
+      if (currentOptionIndex > 0) {
+        currentOptionIndex--;
+        renderCurrentOption();
+      }
     }
 
     function showDeck(index) {
@@ -1094,8 +1181,7 @@
       document.getElementById("insufficient-section").classList.add("hidden");
       document.getElementById("error-section").classList.add("hidden");
       document.getElementById("loading-update").classList.add("hidden");
-      const lawBannerEl = document.getElementById("law-docs-inline") || document.getElementById("law-docs-banner");
-      if (lawBannerEl) lawBannerEl.classList.add("hidden");
+      document.getElementById("law-docs-inline").classList.add("hidden");
       document.getElementById("problem-input").value = "";
       document.getElementById("step-input").classList.remove("hidden");
       document.getElementById("problem-input").focus();
@@ -1194,7 +1280,7 @@
         populateLegalGrounding(data);
         populateReadiness(data);
         populateActionPlan(data);
-        renderOptions(data.legal_options || data.options || data.legal_paths || [], data.options_comparison_note || data.comparison_note || "");
+        renderOptions(data.legal_options || data.options || data.legal_paths || [], data.option_comparison_note || data.comparison_note || "");
         renderDocuments(data);
 
         showDeck(2);
@@ -1289,28 +1375,6 @@
       } catch (err) {
         alert("Failed to generate PDF: " + err.message);
       }
-    }
-
-    // Quick test helper to render sample data without backend
-    function runSample() {
-      const sample = {
-        ai_message: "Sample AI summary: landlord withheld deposit without evidence.",
-        summary: "Tenant vacated property; landlord withheld deposit claiming damage.",
-        case_type: "deposit_dispute",
-        legal_domain: "Civil",
-        severity: "medium",
-        relevant_sections: [{ act: "Model Tenancy Act", section_number: "12", section_title: "Return of deposit", excerpt: "Landlord must return deposit unless proven damages." }],
-        case_readiness_score: 45,
-        required_readiness_score: 80,
-        risk_level: "medium",
-        evidence_missing: ["Original rental agreement", "Bank transfer receipt"],
-        evidence_suggestions: ["Photos of property", "Witness statement"],
-        next_steps: ["Send legal notice", "Collect receipts", "File small claims"],
-        legal_options: [{ name: "Negotiation", tagline: "Talk to landlord first", recommended: false }, { name: "Legal Notice", tagline: "Formal demand letter", recommended: true }],
-        legal_notice_draft: "[Draft legal notice goes here...]",
-        other_documents: []
-      };
-      displayResults(sample);
     }
   </script>
 </body>

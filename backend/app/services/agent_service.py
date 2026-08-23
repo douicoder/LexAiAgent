@@ -146,51 +146,11 @@ class AgentService:
                     model=model,
                     messages=messages,
                     max_tokens=max_tokens,
-                    extra_body={"reasoning": {"enabled": True}},
                     timeout=timeout,
                 )
-
-                # Defensive extraction of text/content from provider responses.
-                content = ""
-                try:
-                    choices = getattr(response, "choices", None) or response.get("choices") if isinstance(response, dict) else None
-                except Exception:
-                    choices = None
-
-                if choices and len(choices) > 0:
-                    first = choices[0]
-                    # support different shapes: object with .message.content, dict with 'message':{'content':...}, or 'text'
-                    try:
-                        msg = None
-                        if hasattr(first, "message"):
-                            msg = getattr(first, "message")
-                        elif isinstance(first, dict):
-                            msg = first.get("message") or first
-                        if isinstance(msg, dict):
-                            content = msg.get("content") or msg.get("text") or ""
-                        elif hasattr(msg, "content"):
-                            content = getattr(msg, "content") or getattr(msg, "text", "") or ""
-                        else:
-                            # fallback to top-level text field
-                            content = getattr(first, "text", None) or (first.get("text") if isinstance(first, dict) else "")
-                    except Exception:
-                        content = ""
-
-                # Final safety: ensure string and strip
-                if content is None:
-                    content = ""
-                try:
-                    content = str(content).strip()
-                except Exception:
-                    content = ""
-
-                if not content:
-                    # Log raw response for debugging when no content extracted
-                    try:
-                        logger.debug(f"LLM raw response (no content): {response}")
-                    except Exception:
-                        logger.debug("LLM raw response unavailable")
-
+                # content can be None when a model returns only reasoning/thinking tokens
+                raw_content = response.choices[0].message.content
+                content = (raw_content or "").strip()
                 logger.debug(f"LLM response: {len(content)} chars")
                 return content
             except (RateLimitError, APITimeoutError, APIConnectionError) as e:
@@ -658,20 +618,15 @@ class AgentService:
             docs_data = {}
 
         other_documents = []
-        for doc in docs_data.get("other_documents", []) or []:
-            if isinstance(doc, dict):
-                content = doc.get("content", "") or ""
-                content = content.replace("\\n", "\n")
-                doc_type = doc.get("doc_type", "document")
-                title = doc.get("title", "Legal Document")
-            else:
-                content = str(doc)
-                doc_type = "document"
-                title = "Legal Document"
+        for doc in docs_data.get("other_documents", []):
+            if not isinstance(doc, dict):
+                continue
+            content = doc.get("content", "")
+            content = content.replace("\\n", "\n")
             other_documents.append(DocumentDTO(
                 id=_generate_doc_id(), case_id="",
-                doc_type=doc_type,
-                title=title,
+                doc_type=doc.get("doc_type", "document"),
+                title=doc.get("title", "Legal Document"),
                 content=content, status="draft",
             ))
 
@@ -682,28 +637,21 @@ class AgentService:
             plan_data = {}
 
         action_steps = []
-        for idx, s in enumerate(plan_data.get("next_steps", []) or []):
-            if isinstance(s, dict):
-                number = s.get("number") or (idx + 1)
-                text = s.get("text", "")
-                action_type = s.get("action_type", "info_gathering")
-                action_config = s.get("action_config", {}) or {}
-            else:
-                number = idx + 1
-                text = str(s)
-                action_type = "info_gathering"
-                action_config = {}
+        for s in plan_data.get("next_steps", []):
+            if not isinstance(s, dict):
+                continue
             action_steps.append(ActionStep(
-                number=number,
-                text=text,
-                action_type=action_type,
-                action_config=action_config,
+                number=s.get("number", 1),
+                text=s.get("text", ""),
+                action_type=s.get("action_type", "info_gathering"),
+                action_config=s.get("action_config", {}),
                 status="pending",
             ))
 
         action_buttons = [
             ActionButton(label=ab.get("label", ""), message=ab.get("message", ""), style=ab.get("style", "default"))
             for ab in plan_data.get("action_buttons", [])
+            if isinstance(ab, dict)
         ]
 
         reasoning_trace.append(f"[done] notice={len(legal_notice)} chars, docs={len(other_documents)}, steps={len(action_steps)}")
